@@ -5,7 +5,7 @@
   "description": "track time on youtube with google calendar and auto summary of what watched ",
   "permissions": ["tabs", "activeTab", "scripting"],
   "background": {
-    "scripts": ["config.js", "background.js"]
+    "scripts": ["config.js", "background.js", "content.js"]
   },
   "content_scripts": [
     {

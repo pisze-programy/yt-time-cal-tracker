@@ -1,5 +1,3 @@
-import { GOOGLE_CONFIG } from './config.js';
-
 browser.runtime.onMessage.addListener((message) => {
   if (message.action === "LOG_YOUTUBE_EVENT") {
     processCalendarEvent(message).catch(console.error);
@@ -12,6 +10,8 @@ async function processCalendarEvent(data) {
   const endDate = new Date(Math.round(now.getTime() / 60000) * 60000);
   const startDate = new Date(endDate.getTime() - (data.durationSec * 1000));
 
+  // TODO: Add Youtube get captions
+  // TODO: Add OpenAi integration
   const aiSummary = "$Summary";
 
   const token = await getGoogleAuthToken(GOOGLE_CONFIG.client_email, GOOGLE_CONFIG.private_key);
