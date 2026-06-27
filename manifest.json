@@ -3,14 +3,28 @@
   "name": "yt-time-cal-tracker",
   "version": "0.1",
   "description": "track time on youtube with google calendar and auto summary of what watched ",
-  "permissions": ["tabs", "activeTab", "scripting"],
+  "permissions": [
+    "storage",
+    "https://www.googleapis.com/*",
+    "https://oauth2.googleapis.com/*"
+  ],
   "background": {
-    "scripts": ["config.js", "background.js", "content.js"]
+    "scripts": ["background.js", "config.js"],
+    "persistent": true
   },
   "content_scripts": [
     {
-      "matches": ["*://*.youtube.com/*"],
-      "js": ["content.js"]
+      "matches": [
+        "*://www.youtube.com/*"
+      ],
+      "js": [
+        "content.js"
+      ],
+      "run_at": "document_idle"
     }
-  ]
+  ],
+  "icons": {
+    "48": "assets/image-48x48-20260627151302.png",
+    "96": "assets/image-96x96-20260627151304.png"
+  }
 }
