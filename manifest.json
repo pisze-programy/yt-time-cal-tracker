@@ -1,0 +1,16 @@
+{
+  "manifest_version": 2,
+  "name": "yt-time-cal-tracker",
+  "version": "0.1",
+  "description": "track time on youtube with google calendar and auto summary of what watched ",
+  "permissions": ["tabs", "activeTab", "scripting"],
+  "background": {
+    "scripts": ["config.js", "background.js"]
+  },
+  "content_scripts": [
+    {
+      "matches": ["*://*.youtube.com/*"],
+      "js": ["content.js"]
+    }
+  ]
+}

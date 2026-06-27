@@ -1,0 +1,8 @@
+{
+  "name": "yt-time-cal-tracker",
+  "version": "0.1",
+  "description": "track time on youtube with google calendar and auto summary of what watched ",
+  "dependencies": {
+    "@types/firefox-webext-browser": "^143.0.0"
+  }
+}
