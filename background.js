@@ -15,7 +15,7 @@ class CalendarSync {
     });
   }
 
-  async #createCalendarEvent({ title, url, startedAt, durationSec }) {
+  async #createCalendarEvent({ title, url, channel, startedAt, durationSec }) {
     const start = new Date(startedAt);
     start.setSeconds(0, 0);
     const end = new Date(start.getTime() + durationSec * 1000);
@@ -38,8 +38,8 @@ class CalendarSync {
           "Content-Type": "application/json",
         },
         body: JSON.stringify({
-          summary: `YT - ${title} ${channel}`,
-          description: `${url}`,
+          summary: `YT - ${title}`,
+          description: `Channel: ${channel}, URL: ${url}`,
           start: { dateTime: start.toISOString() },
           end: { dateTime: end.toISOString() },
           reminders: { useDefault: false, overrides: [] },
