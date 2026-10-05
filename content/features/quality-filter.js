@@ -56,7 +56,15 @@
 
         if (a.verdict === "Low") {
           el.classList.add("ytcal-low-quality");
-          this.#renderActions(el, id, meta);
+          const label = el.querySelector(".ytcal-label");
+          if (el.querySelector(".ytcal-actions")) {
+            // keep the label in sync as YouTube fills in views/age late
+            if (label) label.textContent = this.#labelText(meta);
+          } else {
+            this.#renderActions(el, id, meta);
+          }
+        } else {
+          el.classList.remove("ytcal-low-quality");
         }
       }
     }

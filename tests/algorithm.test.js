@@ -57,6 +57,14 @@ eq(c.parseLocalizedNumber("2 miliony wyświetleń"), 2000000, "2 miliony");
 eq(c.parseLocalizedNumber("1 234 komentarzy"), 1234, "1 234 komentarzy (no false scale)");
 eq(c.parseLocalizedNumber("101 tysięcy wyświetleń"), 101000, "101 tysięcy");
 eq(c.parseAgeHours("11 miesięcy temu"), 7920, "11 miesięcy");
+
+// --- metadata row classification (never treat a channel name as views) ---
+ok(c.isViewsLabel("49 tysięcy wyświetleń"), "views label PL");
+ok(c.isViewsLabel("1.2M views"), "views label EN");
+ok(!c.isViewsLabel("Daniel Dalen"), "channel name is not a views label");
+ok(!c.isViewsLabel("Zweryfikowano"), "verified badge is not a views label");
+ok(c.isAgeLabel("1 dzień temu"), "age label PL");
+ok(!c.isAgeLabel("Daniel Dalen"), "channel name is not an age label");
 eq(c.parseLocalizedNumber(""), null, "empty -> null");
 
 // --- age parsing ---

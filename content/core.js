@@ -136,6 +136,16 @@
     );
   }
 
+  // A views label must contain a digit AND a view keyword (never a bare channel name).
+  function isViewsLabel(text) {
+    return !!text && /\d/.test(text) && /(wyświetl|widz|views?)/i.test(text);
+  }
+
+  // An age label is relative-time text ("1 dzień temu", "3 days ago").
+  function isAgeLabel(text) {
+    return !!text && /(temu|ago|yesterday|wczoraj|przed chwil)/i.test(text);
+  }
+
   // Supports both the new view-model markup and the classic ytd-* renderers.
   function extractMetadata(el) {
     let viewsText = null;
@@ -144,27 +154,17 @@
     const rows = el.querySelectorAll(
       '[class*="ytContentMetadataViewModelMetadataRow"], [class*="ContentMetadataViewModelMetadataRow"]'
     );
-    if (rows.length) {
-      let viewEl = null;
-      let ageEl = null;
-      for (const row of rows) {
+    for (const row of rows) {
+      for (const t of row.querySelectorAll('[class*="MetadataText"]')) {
+        const aria = t.getAttribute("aria-label") || t.textContent || "";
+        if (!viewsText && isViewsLabel(aria)) viewsText = aria;
+        else if (!ageText && isAgeLabel(aria)) ageText = aria;
+      }
+      if (!ageText) {
         const last = row.querySelector('[class*="LastPart"]');
-        for (const t of row.querySelectorAll('[class*="MetadataText"]')) {
-          const aria = t.getAttribute("aria-label") || t.textContent || "";
-          if (/wyświetl|widz|view|obejrz/i.test(aria)) {
-            viewEl = t;
-            break;
-          }
-        }
-        if (last) ageEl = last;
-        if (viewEl) break;
+        if (last) ageText = last.getAttribute("aria-label") || last.textContent;
       }
-      if (viewEl) viewsText = viewEl.getAttribute("aria-label") || viewEl.textContent;
-      if (ageEl) ageText = ageEl.getAttribute("aria-label") || ageEl.textContent;
-      if (!viewsText) {
-        const firstText = el.querySelector('[class*="MetadataText"]');
-        if (firstText) viewsText = firstText.getAttribute("aria-label") || firstText.textContent;
-      }
+      if (viewsText && ageText) break;
     }
 
     if (viewsText == null) {
@@ -438,7 +438,6 @@
     if (n == null || !Number.isFinite(n)) return "—";
     return Number(n).toLocaleString("en-US");
   }
-
   function formatAgeHours(h) {
     if (h == null || !Number.isFinite(h)) return "—";
     if (h < 1) return `${Math.max(1, Math.round(h * 60))}m`;
@@ -465,6 +464,8 @@
     getVideoId,
     isShort,
     extractMetadata,
+    isViewsLabel,
+    isAgeLabel,
     getRendererData,
     deepFind,
     wilsonLowerBound,
