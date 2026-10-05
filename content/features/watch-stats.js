@@ -1,15 +1,22 @@
 // watch-stats.js — quality row for the watched video (above the title).
-// Facts (numbers) + derived quantities + exactly ONE qualitative verdict chip.
+// Facts (numbers) + exactly ONE qualitative verdict chip + a collapsible knowledge block.
 // All judgment comes from core.analyze; this file never computes its own score.
 (function () {
   "use strict";
 
   const YTCAL = (window.YTCAL = window.YTCAL || {});
   const SEP = '<span class="ytcal-pipe">·</span>';
+  const CHEVRON_DOWN =
+    '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M18.707 8.793a1 1 0 00-1.414 0L12 14.086 6.707 8.793a1 1 0 10-1.414 1.414L12 16.914l6.707-6.707a1 1 0 000-1.414Z"></path></svg>';
+  const CHEVRON_UP =
+    '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5.293 15.207a1 1 0 001.414 0L12 9.914l5.293 5.293a1 1 0 101.414-1.414L12 7.086l-6.707 6.707a1 1 0 000 1.414Z"></path></svg>';
 
   YTCAL.WatchStatsFeature = class {
     #el = null;
     #html = "";
+    #expanded = false;
+    #dislikes = new Map();
+    #loading = new Set();
 
     get enabled() {
       return !window.YTCAL_FEATURES || window.YTCAL_FEATURES.watchStats !== false;
@@ -24,6 +31,7 @@
     }
 
     onNavigate() {
+      this.#expanded = false;
       this.render();
     }
 
@@ -54,10 +62,19 @@
       });
       if (!a) return;
 
+      if (d.videoId) this.#maybeLoadDislikes(d.videoId);
+
       if (!this.#el || !document.contains(this.#el)) {
         this.#el = document.createElement("div");
         this.#el.className = "ytcal-watch-stats";
         this.#html = "";
+        this.#el.addEventListener("click", (e) => {
+          if (e.target.closest(".ytcal-expand")) {
+            e.preventDefault();
+            e.stopPropagation();
+            this.#toggle();
+          }
+        });
         const titleRow = host.querySelector("#title-row");
         host.insertBefore(this.#el, titleRow || host.firstChild);
       }
@@ -66,6 +83,23 @@
       if (html !== this.#html) {
         this.#html = html;
         this.#el.innerHTML = html;
+      }
+      this.#applyExpanded();
+    }
+
+    #toggle() {
+      this.#expanded = !this.#expanded;
+      this.#applyExpanded();
+    }
+
+    #applyExpanded() {
+      if (!this.#el) return;
+      const details = this.#el.querySelector(".ytcal-details");
+      const btn = this.#el.querySelector(".ytcal-expand");
+      if (details) details.classList.toggle("open", this.#expanded);
+      if (btn) {
+        btn.setAttribute("aria-expanded", this.#expanded ? "true" : "false");
+        btn.innerHTML = this.#expanded ? CHEVRON_UP : CHEVRON_DOWN;
       }
     }
 
@@ -77,6 +111,26 @@
       }
     }
 
+    // Dislikes are not public since Dec 2021; the only source is the third-party
+    // Return YouTube Dislike API (an estimate). Sent: video id only.
+    #maybeLoadDislikes(id) {
+      if (!id || this.#dislikes.has(id) || this.#loading.has(id)) return;
+      this.#loading.add(id);
+      fetch(`https://returnyoutubedislikeapi.com/votes?videoId=${encodeURIComponent(id)}`, {
+        credentials: "omit",
+      })
+        .then((r) => (r.ok ? r.json() : null))
+        .then((data) => {
+          this.#loading.delete(id);
+          if (data && Number.isFinite(data.dislikes) && data.dislikes > 0) {
+            this.#dislikes.set(id, data.dislikes);
+            this.#html = "";
+            this.render();
+          }
+        })
+        .catch(() => this.#loading.delete(id));
+    }
+
     #collect() {
       const core = YTCAL.core;
       const videoId = new URLSearchParams(location.search).get("v");
@@ -84,7 +138,6 @@
       const pr = window.ytInitialPlayerResponse || {};
       const vd = pr.videoDetails || {};
       const mf = (pr.microformat && pr.microformat.playerMicroformatRenderer) || {};
-      // ytInitialPlayerResponse can be stale after SPA navigation — only trust it for the same video.
       const prMatches = !videoId || vd.videoId === videoId;
 
       const infoEl = document.querySelector("ytd-watch-info-text #info");
@@ -153,12 +206,12 @@
     #template(d, a) {
       const core = YTCAL.core;
       const m = a.metrics;
-
+      const t = (window.YTCAL_FEATURES && window.YTCAL_FEATURES.thresholds) || {};
+      const cw = t.commentWeight != null ? t.commentWeight : 1;
       const baseVph = Math.max(0, Math.round(Math.pow(10, core.baselineOf("vph").mean) - 1));
       const baseEr = core.baselineOf("er").mean || 0.025;
       const erPct = m.rawRate != null ? (m.rawRate * 100).toFixed(2) : null;
-      const t = (window.YTCAL_FEATURES && window.YTCAL_FEATURES.thresholds) || {};
-      const cw = t.commentWeight != null ? t.commentWeight : 1;
+      const dislikes = d.videoId ? this.#dislikes.get(d.videoId) : null;
 
       const lenNote =
         m.durFactor && Math.abs(m.durFactor - 1) > 0.01
@@ -176,70 +229,74 @@
       const why = a.reason ? ` · ${a.reason}` : "";
       const verdictTip = `${a.verdict}${scoreTxt}${why}. Reach: ${a.labels.reach} · Velocity: ${a.labels.velocity} · Engagement: ${m.engagementKnown ? a.labels.engagement : "unknown"}.`;
 
-      const parts = [];
-      parts.push(`<span class="ytcal-stat" title="${core.formatNumber(m.views)} views">👁 <b>${core.formatNumber(m.views)}</b></span>`);
-      parts.push(`<span class="ytcal-stat" title="published ${core.formatAgeHours(m.ageHours)} ago">⏱ <b>${core.formatAgeHours(m.ageHours)}</b></span>`);
-      if (m.durationSec != null) parts.push(`<span class="ytcal-stat" title="video length">⏳ <b>${core.formatDurationSec(m.durationSec)}</b></span>`);
-      if (m.likes != null) parts.push(`<span class="ytcal-stat" title="${core.formatNumber(m.likes)} likes">👍 <b>${core.formatNumber(m.likes)}</b></span>`);
-      if (m.comments != null) parts.push(`<span class="ytcal-stat" title="${core.formatNumber(m.comments)} comments">💬 <b>${core.formatNumber(m.comments)}</b></span>`);
-      parts.push(`<span class="ytcal-stat" title="${velocityTip}">⚡ <b>${Math.round(m.vph)}/h</b></span>`);
-      if (erPct != null) parts.push(`<span class="ytcal-stat" title="${engagementTip}">❤️ <b>${erPct}%</b></span>`);
+      // Group 1: facts (no claims).
+      const row = [];
+      row.push(`<span class="ytcal-stat" title="${core.formatNumber(m.views)} views">👁 <b>${core.formatNumber(m.views)}</b></span>`);
+      row.push(`<span class="ytcal-stat" title="published ${core.formatAgeHours(m.ageHours)} ago">⏱ <b>${core.formatAgeHours(m.ageHours)}</b></span>`);
+      if (m.durationSec != null) row.push(`<span class="ytcal-stat" title="video length">⏳ <b>${core.formatDurationSec(m.durationSec)}</b></span>`);
+      if (m.likes != null) row.push(`<span class="ytcal-stat" title="${core.formatNumber(m.likes)} likes">👍 <b>${core.formatNumber(m.likes)}</b></span>`);
+      if (dislikes != null) row.push(`<span class="ytcal-stat" title="Dislikes (estimated by Return YouTube Dislike)">👎 <b>${core.formatNumber(dislikes)}</b></span>`);
+      if (m.comments != null) row.push(`<span class="ytcal-stat" title="${core.formatNumber(m.comments)} comments">💬 <b>${core.formatNumber(m.comments)}</b></span>`);
+      row.push(`<span class="ytcal-stat" title="${velocityTip}">⚡ <b>${Math.round(m.vph)}/h</b></span>`);
+      if (erPct != null) row.push(`<span class="ytcal-stat" title="${engagementTip}">❤️ <b>${erPct}%</b></span>`);
+      row.push(`<span class="ytcal-badge ytcal-band-${a.band}" title="${verdictTip}">${a.verdict}${scoreTxt}</span>`);
 
-      parts.push(`<span class="ytcal-badge ytcal-band-${a.band}" title="${verdictTip}">${a.verdict}</span>`);
-      if (!m.engagementKnown) parts.push('<span class="ytcal-muted">reach &amp; velocity only</span>');
+      // Group 2: one-line verdict headline (visible) + collapsible knowledge.
+      const head = this.#verdictHead(a, m);
+      const details = this.#details(a, m, erPct);
 
-      return parts.join(SEP) + this.#verdictBlock(a, m);
+      return (
+        `<div class="ytcal-row">${row.join(SEP)}</div>` +
+        `<div class="ytcal-verdict-line">${head}</div>` +
+        `<div class="ytcal-details">${details}</div>` +
+        `<button class="ytcal-expand" type="button" aria-expanded="false" aria-label="More details">${CHEVRON_DOWN}</button>`
+      );
     }
 
-    // Multi-line explanation: verdict + weak spots, per-metric snapshot, what to raise
-    // to rank higher, and a short glossary. All labels come from core.analyze, so the
-    // words can never disagree with the aggregate.
-    #verdictBlock(a, m) {
-      const core = YTCAL.core;
-      const tg = core.targets();
-      const erPct = m.rawRate != null ? (m.rawRate * 100).toFixed(2) : null;
-      const scoreTxt =
-        a.verdict === "Low" || a.verdict === "Suspicious" ? "" : ` (${Math.round(a.score)}/100)`;
-      const why = a.reason ? ` — ${a.reason}` : "";
+    #verdictHead(a, m) {
       const weakRe = /low|below average/;
-
       const weak = [];
       if (weakRe.test(a.labels.reach)) weak.push("reach");
       if (m.recent && weakRe.test(a.labels.velocity)) weak.push("velocity");
       if (m.engagementKnown && weakRe.test(a.labels.engagement)) weak.push("engagement");
-
-      const line1 = `${a.verdict}${scoreTxt}${why}${
+      const scoreTxt =
+        a.verdict === "Low" || a.verdict === "Suspicious" ? "" : ` (${Math.round(a.score)}/100)`;
+      const why = a.reason ? ` — ${a.reason}` : "";
+      return `${a.verdict}${scoreTxt}${why}${
         weak.length ? ` · weak: <b>${weak.join(", ")}</b>` : " · no obvious weak spot"
-      }`;
+      }${!m.engagementKnown ? " · reach &amp; velocity only" : ""}`;
+    }
+
+    // Collapsible details: snapshot, what to raise, glossary.
+    #details(a, m, erPct) {
+      const core = YTCAL.core;
+      const tg = core.targets();
+      const weakRe = /low|below average/;
 
       const snap = [`reach <b>${a.labels.reach}</b> (${core.formatNumber(m.views)})`];
       if (m.recent) snap.push(`velocity <b>${a.labels.velocity}</b> (${Math.round(m.vph)}/h)`);
       if (m.engagementKnown) snap.push(`engagement <b>${a.labels.engagement}</b> (${erPct}%)`);
-      const line2 = snap.join(" · ");
 
       const order = ["Low", "Weak", "Average", "Good", "Strong", "Excellent", "Top"];
       const idx = order.indexOf(a.verdict);
       const next = idx >= 0 && idx < order.length - 1 ? order[idx + 1] : null;
       const targets = [];
-      if (weak.includes("reach")) targets.push(`reach ≥ ${core.formatNumber(tg.viewsAbove)}`);
-      if (weak.includes("velocity")) targets.push(`velocity ≥ ${tg.vphAbove}/h`);
-      if (weak.includes("engagement"))
+      if (weakRe.test(a.labels.reach)) targets.push(`reach ≥ ${core.formatNumber(tg.viewsAbove)}`);
+      if (m.recent && weakRe.test(a.labels.velocity)) targets.push(`velocity ≥ ${tg.vphAbove}/h`);
+      if (m.engagementKnown && weakRe.test(a.labels.engagement))
         targets.push(`engagement ≥ ${(tg.erAbove * 100).toFixed(1)}%`);
-      const line3 = next
-        ? `To reach <b>${next}</b> raise: ${
-            weak.length ? targets.join(" · ") : "any metric (already balanced)"
-          }. High marks: reach ≥ ${core.formatNumber(tg.viewsHigh)} · velocity ≥ ${tg.vphHigh}/h · engagement ≥ ${(tg.erHigh * 100).toFixed(1)}%.`
+      const guidance = next
+        ? `To reach <b>${next}</b> raise: ${targets.length ? targets.join(" · ") : "any metric (already balanced)"}. High marks: reach ≥ ${core.formatNumber(tg.viewsHigh)} · velocity ≥ ${tg.vphHigh}/h · engagement ≥ ${(tg.erHigh * 100).toFixed(1)}%.`
         : `Already the top band. High marks: reach ≥ ${core.formatNumber(tg.viewsHigh)} · velocity ≥ ${tg.vphHigh}/h · engagement ≥ ${(tg.erHigh * 100).toFixed(1)}%.`;
 
-      const line4 =
+      const glossary =
         "ER = (likes + comments) / views (share of viewers who react). VPH = views per hour. " +
         "Labels: low &lt; below average &lt; typical &lt; above average &lt; high.";
 
       return (
-        `<span class="ytcal-verdict-line">${line1}</span>` +
-        `<span class="ytcal-verdict-line ytcal-muted">${line2}${!m.engagementKnown ? " (likes/comments unavailable)" : ""}</span>` +
-        `<span class="ytcal-verdict-line ytcal-muted">${line3}</span>` +
-        `<span class="ytcal-verdict-line ytcal-muted">${line4}</span>`
+        `<span class="ytcal-verdict-line ytcal-muted">${snap.join(" · ")}</span>` +
+        `<span class="ytcal-verdict-line ytcal-muted">${guidance}</span>` +
+        `<span class="ytcal-verdict-line ytcal-muted">${glossary}</span>`
       );
     }
   };

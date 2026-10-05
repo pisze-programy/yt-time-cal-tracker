@@ -131,32 +131,25 @@
   font-weight: 600;
 }
 
-/* Full-width explanation line under the stats row. */
-.ytcal-watch-stats .ytcal-verdict-line {
-  flex-basis: 100%;
-  width: 100%;
-  font-size: 12px;
-  line-height: 1.5;
-  opacity: 0.8;
-}
-
-.ytcal-watch-stats .ytcal-verdict-line b {
-  font-weight: 700;
-  opacity: 1;
-}
-
 /* Watch page stats row (above the title). */
 .ytcal-watch-stats {
+  position: relative;
   display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 8px;
+  flex-direction: column;
+  gap: 4px;
   margin: 0 0 8px;
-  padding: 7px 12px;
+  padding: 7px 44px 7px 12px;
   border-radius: 12px;
   background: rgba(255, 255, 255, 0.06);
   font: 500 13px/1.4 Roboto, Arial, sans-serif;
   color: var(--yt-spec-text-primary, #f1f1f1);
+}
+
+.ytcal-watch-stats .ytcal-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
 }
 
 .ytcal-watch-stats .ytcal-stat {
@@ -172,4 +165,64 @@
 
 .ytcal-watch-stats .ytcal-pipe {
   opacity: 0.3;
+}
+
+.ytcal-watch-stats .ytcal-verdict-line {
+  display: block;
+  font-size: 12px;
+  line-height: 1.5;
+  opacity: 0.85;
+}
+
+.ytcal-watch-stats .ytcal-verdict-line b {
+  font-weight: 700;
+  opacity: 1;
+}
+
+/* Animated collapsible knowledge block. */
+.ytcal-details {
+  max-height: 0;
+  overflow: hidden;
+  opacity: 0;
+  transition: max-height 0.22s ease, opacity 0.22s ease;
+}
+
+.ytcal-details.open {
+  max-height: 220px;
+  opacity: 1;
+}
+
+.ytcal-details .ytcal-verdict-line {
+  display: block;
+  margin-top: 2px;
+}
+
+/* Expander button — top-right, YT-style rounded-full tonal button. */
+.ytcal-expand {
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  width: 32px;
+  height: 32px;
+  padding: 0;
+  box-sizing: border-box;
+  border: none;
+  border-radius: 9999px;
+  cursor: pointer;
+  display: grid;
+  place-items: center;
+  background: rgba(255, 255, 255, 0.08);
+  color: var(--yt-spec-text-primary, #f1f1f1);
+  transition: background 0.15s ease;
+}
+
+.ytcal-expand:hover {
+  background: rgba(255, 255, 255, 0.18);
+}
+
+.ytcal-expand svg {
+  width: 20px;
+  height: 20px;
+  fill: currentColor;
+  pointer-events: none;
 }

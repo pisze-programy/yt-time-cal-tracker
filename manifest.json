@@ -7,6 +7,7 @@
     "storage",
     "https://www.googleapis.com/*",
     "https://oauth2.googleapis.com/*",
+    "https://returnyoutubedislikeapi.com/*",
     "*://www.youtube.com/*"
   ],
   "background": {
