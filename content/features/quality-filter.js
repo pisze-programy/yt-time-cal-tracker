@@ -49,7 +49,7 @@
         const meta = core.extractMetadata(el);
         if (meta.views == null) continue;
 
-        const a = core.analyze({ views: meta.views, ageHours: meta.ageHours });
+        const a = core.analyze({ views: meta.views, ageHours: meta.ageHours, durationSec: meta.durationSec });
         if (!a) continue;
 
         if (a.verdict === "Low") {

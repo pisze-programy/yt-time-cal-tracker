@@ -48,6 +48,7 @@
       const a = core.analyze({
         views: d.views,
         ageHours: d.ageHours,
+        durationSec: d.durationSec,
         likes: d.likes,
         comments: d.comments,
       });
@@ -111,7 +112,23 @@
         if (dt) ageHours = (Date.now() - dt.getTime()) / 3.6e6;
       }
 
-      return { videoId, views, ageHours, likes: this.#readLikes(), comments: this.#readComments() };
+      let durationSec = null;
+      const vid = document.querySelector("video");
+      if (vid && Number.isFinite(vid.duration) && vid.duration > 0) {
+        durationSec = Math.round(vid.duration);
+      } else {
+        const dt = document.querySelector(".ytp-time-duration");
+        if (dt) durationSec = core.parseDurationSec(dt.textContent);
+      }
+
+      return {
+        videoId,
+        views,
+        ageHours,
+        durationSec,
+        likes: this.#readLikes(),
+        comments: this.#readComments(),
+      };
     }
 
     #readLikes() {
@@ -140,13 +157,19 @@
       const baseVph = Math.max(0, Math.round(Math.pow(10, core.baselineOf("vph").mean) - 1));
       const baseEr = core.baselineOf("er").mean || 0.025;
       const erPct = m.rawRate != null ? (m.rawRate * 100).toFixed(2) : null;
+      const t = (window.YTCAL_FEATURES && window.YTCAL_FEATURES.thresholds) || {};
+      const cw = t.commentWeight != null ? t.commentWeight : 1;
 
+      const lenNote =
+        m.durFactor && Math.abs(m.durFactor - 1) > 0.01
+          ? ` Length-adjusted ×${m.durFactor.toFixed(2)}.`
+          : "";
       const velocityTip = m.recent
-        ? `${Math.round(m.vph)} views/hour (smoothed). Typical ~${baseVph}/h — ${a.labels.velocity}.`
+        ? `${Math.round(m.vph)} views/hour (smoothed). Typical ~${baseVph}/h — ${a.labels.velocity}.${lenNote}`
         : `${Math.round(m.vph)} views/hour (lifetime average; not used in the score for older videos).`;
       const engagementTip =
         m.rawRate != null
-          ? `${erPct}% engagement = (likes + 3×comments) / views. Typical ~${(baseEr * 100).toFixed(1)}% — ${a.labels.engagement}. Wilson 95% lower bound: ${(m.lb * 100).toFixed(2)}%.`
+          ? `${erPct}% engagement = (likes + ${cw}×comments) / views. Typical ~${(baseEr * 100).toFixed(1)}% — ${a.labels.engagement}. Wilson 95% lower bound: ${(m.lb * 100).toFixed(2)}%.`
           : "";
       const scoreTxt =
         a.verdict === "Low" || a.verdict === "Suspicious" ? "" : ` (${Math.round(a.score)}/100)`;
@@ -156,6 +179,7 @@
       const parts = [];
       parts.push(`<span class="ytcal-stat" title="${core.formatNumber(m.views)} views">👁 <b>${core.formatNumber(m.views)}</b></span>`);
       parts.push(`<span class="ytcal-stat" title="published ${core.formatAgeHours(m.ageHours)} ago">⏱ <b>${core.formatAgeHours(m.ageHours)}</b></span>`);
+      if (m.durationSec != null) parts.push(`<span class="ytcal-stat" title="video length">⏳ <b>${core.formatDurationSec(m.durationSec)}</b></span>`);
       if (m.likes != null) parts.push(`<span class="ytcal-stat" title="${core.formatNumber(m.likes)} likes">👍 <b>${core.formatNumber(m.likes)}</b></span>`);
       if (m.comments != null) parts.push(`<span class="ytcal-stat" title="${core.formatNumber(m.comments)} comments">💬 <b>${core.formatNumber(m.comments)}</b></span>`);
       parts.push(`<span class="ytcal-stat" title="${velocityTip}">⚡ <b>${Math.round(m.vph)}/h</b></span>`);

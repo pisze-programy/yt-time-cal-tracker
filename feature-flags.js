@@ -12,15 +12,17 @@ window.YTCAL_FEATURES = {
 
   // Scoring thresholds (see core.js -> analyze / isLowQuality).
   thresholds: {
-    minViewsForScore: 100,          // below this view count the score is noise -> skip badge
+    minViewsForScore: 100,          // badge-only: hide the tile badge below this view count (filter still runs)
     lowQualityMaxViews: 100,        // absolute floor: fewer than X views ...
     lowQualityMinAgeHours: 6,       // ... and older than Y hours = low quality
     lowQualityMinVph: 100,          // velocity floor (views/hour) within the first days
     lowQualityOldHours: 48,         // after this age, judge by total reach instead of velocity
     lowQualityMaxViewsOld: 1000,    // old content below this total = low quality
     lowQualityMaxEngagement: 0.002, // many views but Wilson LB below 0.2% = low quality
-    commentWeight: 3,               // comment weight relative to a like (comments/view ~ 1/3 likes/view)
+    commentWeight: 1,               // 1 = industry (likes + comments) / views; likes:comments ~ 10:1
     priorViews: 30,                 // Bayesian smoothing for view velocity
     priorHours: 3,
+    durationWeight: 0.25,           // how strongly video length adjusts expected velocity
+    durationNeutralMin: 8,          // length (minutes) that leaves velocity unchanged
   },
 };

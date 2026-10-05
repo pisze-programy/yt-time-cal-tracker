@@ -84,22 +84,24 @@ established methods:
    *How Not To Sort By Average Rating*; Reddit `_sorts.pyx`;
    JS library `msn0/wilson-score-interval`.
    ```
-   n = V ;  p = (L + 3·C) / V        // comment weight 2–3× (comments/view ≈ ⅓ likes/view)
+   n = V ;  p = (L + C) / V          // industry (likes + comments) / views; likes:comments ≈ 10:1
    lb = (p + z²/2n − z·√((p(1−p)+z²/4n)/n)) / (1 + z²/n),  z = 1.96
    ```
+   Reference engagement: census median 3.67% (CreatorDB, 1.46M channels, 2026).
 2. **Bayesian-smoothed view velocity** — `vph = (V + m) / (T + T0)`, `m = 30`, `T0 = 3h`.
+   Length-adjusted: `vphAdj = vph · clamp((durationMin / 8)^0.25, 0.6, 1.8)` — longer videos are
+   not penalised for gathering views more slowly, short clips are not rewarded as if viral.
 3. **Aggregate 0–100** — `core.analyze()` scores each video **only from its own data + age**,
    against a fixed reference (no feed comparison, deterministic):
    ```
    z = clamp((x − μ)/σ, −4, 4)                    // μ/σ are fixed constants
    f = clamp((T − 24) / 48, 0, 1)                 // velocity fades out 24h → 72h
-   score = 100 · sigmoid((0.30+0.35·f)·z_V + 0.35·(1−f)·z_VPH + 0.35·z_ER)
-   ```
+   score = 100 · sigmoid((0.30+0.35·f)·z_V + 0.35·(1−f)·z_VPH + 0.35·z_ER)   ```
    Missing engagement is neutral (`z_ER = 0`) and reported as `confidence 0.65` (vs 1.0).
    Verdict (one per video, consumed by badge + filter + watch row): 7 steps —
    `Low` (absolute low-quality policy wins) · `Weak` · `Average` · `Good` · `Strong`
    · `Excellent` · `Top`, plus `Suspicious` (high reach, very low engagement).
-   Bands use fixed score cuts (20/35/50/62/74/86).
+   Bands use fixed score cuts (20/35/52/64/76/86).
 
 Low-quality rule (feeds/sidebar expose no like counts). Fresh videos are not judged
 by velocity, and old videos are judged by total reach because views/hour decays:

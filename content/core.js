@@ -80,6 +80,34 @@
     return m ? parseLocalizedNumber(m[1]) : null;
   }
 
+  // Parses a video length from a thumbnail badge: aria "1 godzina i 24 sekundy",
+  // or clock text "1:00:24" / "6:03". Returns seconds.
+  function parseDurationSec(text) {
+    if (!text) return null;
+    const s = String(text).toLowerCase();
+    let sec = 0;
+    let found = false;
+    let m;
+    if ((m = s.match(/(\d+)\s*(?:godzin|godz|hour|hr)/))) {
+      sec += +m[1] * 3600;
+      found = true;
+    }
+    if ((m = s.match(/(\d+)\s*(?:minut|min\b|minute)/))) {
+      sec += +m[1] * 60;
+      found = true;
+    }
+    if ((m = s.match(/(\d+)\s*(?:sekund|sek\b|sec\b|second)/))) {
+      sec += +m[1];
+      found = true;
+    }
+    if (found) return sec;
+    const c = String(text)
+      .trim()
+      .match(/^(?:(\d+):)?(\d{1,2}):(\d{2})$/);
+    if (c) return (+(c[1] || 0)) * 3600 + (+c[2]) * 60 + (+c[3]);
+    return null;
+  }
+
   const MONTHS = {
     sty: 0, lut: 1, mar: 2, kwi: 3, maj: 4, cze: 5, lip: 6, sie: 7, wrz: 8, "paź": 9, paz: 9, lis: 10, gru: 11,
     jan: 0, feb: 1, apr: 3, jun: 5, jul: 6, aug: 7, sep: 8, oct: 9, nov: 10, dec: 11,
@@ -134,6 +162,18 @@
       el.tagName.toLowerCase() === "ytm-shorts-lockup-view-model" ||
       !!el.closest("ytm-shorts-lockup-view-model")
     );
+  }
+
+  // Video length from the thumbnail duration badge (new view-model and classic layouts).
+  function extractDuration(el) {
+    const bottom = el.querySelector(
+      '[class*="ytThumbnailBottomOverlay"], ytd-thumbnail-overlay-time-status-renderer'
+    );
+    let badge = bottom ? bottom.querySelector("badge-shape, #text") : null;
+    if (!badge) badge = el.querySelector("ytd-thumbnail-overlay-time-status-renderer #text");
+    if (!badge) return null;
+    const text = badge.getAttribute("aria-label") || badge.textContent || "";
+    return parseDurationSec(text);
   }
 
   // A views label must contain a digit AND a view keyword (never a bare channel name).
@@ -207,7 +247,8 @@
 
     const views = parseLocalizedNumber(viewsText);
     const ageHours = parseAgeHours(ageText);
-    return { views, ageHours, viewsText, ageText };
+    const durationSec = extractDuration(el);
+    return { views, ageHours, durationSec, viewsText, ageText };
   }
 
   // Nearest renderer exposing `.data` (Polymer) — the source of menu/feedback tokens.
@@ -262,11 +303,11 @@
   // Pinned reference (deterministic). The running self-calibrating mean/std was removed: it made
   // scores relative to the feed, so a 1.1M-view video could be labelled "Low" in a feed full of
   // millions (and flipped at the n>=30 switch). A fixed reference keeps scores monotonic in magnitude.
-  const REFERENCE = {
-    views: { mean: 3.3, std: 1.3 }, // log10(views+1)
-    vph: { mean: 1.6, std: 0.9 }, // log10(vph+1) ~= 40 views/hour
-    er: { mean: 0.025, std: 0.02 }, // wilson lower bound
-  };
+  const REFERENCE = Object.freeze({
+    views: Object.freeze({ mean: 3.3, std: 1.3 }), // log10(views+1) ~= 2k at z=0
+    vph: Object.freeze({ mean: 1.6, std: 0.9 }), // log10(vph+1) ~= 40 views/hour at z=0
+    er: Object.freeze({ mean: 0.025, std: 0.02 }), // Wilson LB of (L+1·C)/V; census median ~3.67%
+  });
 
   function baselineOf(key) {
     return REFERENCE[key];
@@ -294,8 +335,7 @@
     if (age < minAge) return false;
 
     if (age <= oldHours) {
-      const rawVph = views / Math.max(age, 0.5);
-      return views < maxViews || rawVph < minVph;
+      return views < maxViews || smoothedVph(views, age) < minVph;
     }
     return views < maxViewsOld;
   }
@@ -336,9 +376,9 @@
   function bandForScore(score) {
     if (score < 20) return "Low";
     if (score < 35) return "Weak";
-    if (score < 50) return "Average";
-    if (score < 62) return "Good";
-    if (score < 74) return "Strong";
+    if (score < 52) return "Average";
+    if (score < 64) return "Good";
+    if (score < 76) return "Strong";
     if (score < 86) return "Excellent";
     return "Top";
   }
@@ -350,7 +390,7 @@
   }
 
   // The single source of truth. Pure and deterministic (no baseline side effects).
-  function analyze({ views, likes, comments, ageHours }) {
+  function analyze({ views, likes, comments, ageHours, durationSec }) {
     if (views == null || views <= 0) return null;
     const t = thresholds();
     const commentWeight = t.commentWeight != null ? t.commentWeight : 3;
@@ -366,17 +406,24 @@
     const age = ageHours != null ? ageHours : 1;
     const vph = smoothedVph(views, age);
 
+    // Length adjustment: longer videos naturally gather fewer views/hour, short clips more.
+    const durationMin = durationSec != null && durationSec > 0 ? durationSec / 60 : null;
+    const dw = t.durationWeight != null ? t.durationWeight : 0.25;
+    const neutralMin = t.durationNeutralMin != null ? t.durationNeutralMin : 8;
+    const durFactor =
+      durationMin != null ? clamp(Math.pow(durationMin / neutralMin, dw), 0.6, 1.8) : 1;
+    const vphAdj = vph * durFactor;
+
     const sv = REFERENCE.views;
     const sp = REFERENCE.vph;
     const se = REFERENCE.er;
 
     const zV = clamp((Math.log10(views + 1) - sv.mean) / sv.std, -4, 4);
-    const zP = clamp((Math.log10(vph + 1) - sp.mean) / sp.std, -4, 4);
+    const zP = clamp((Math.log10(vphAdj + 1) - sp.mean) / sp.std, -4, 4);
     const zE = engagementKnown ? clamp((lb - se.mean) / se.std, -4, 4) : 0;
 
     // Velocity weight fades out between 24h and 72h (lifetime average beyond that).
-    const ageH = ageHours != null ? ageHours : 0;
-    const f = clamp((ageH - VELOCITY_FADE_START) / (VELOCITY_FADE_END - VELOCITY_FADE_START), 0, 1);
+    const f = clamp((age - VELOCITY_FADE_START) / (VELOCITY_FADE_END - VELOCITY_FADE_START), 0, 1);
     const W = { v: WEIGHTS.v + WEIGHTS.p * f, p: WEIGHTS.p * (1 - f), e: WEIGHTS.e };
     const recent = f < 1;
 
@@ -395,7 +442,7 @@
     }
 
     return {
-      metrics: { views, likes: L, comments: C, ageHours, vph, lb, rawRate, engagementKnown, recent },
+      metrics: { views, likes: L, comments: C, ageHours, durationSec, vph, vphAdj, durFactor, lb, rawRate, engagementKnown, recent },
       z,
       score,
       confidence,
@@ -426,6 +473,16 @@
     return `${Math.round(h / (24 * 365))}y`;
   }
 
+  function formatDurationSec(s) {
+    if (s == null || !Number.isFinite(s)) return "—";
+    const t = Math.max(0, Math.round(s));
+    const h = Math.floor(t / 3600);
+    const m = Math.floor((t % 3600) / 60);
+    const sec = t % 60;
+    if (h) return `${h}:${String(m).padStart(2, "0")}:${String(sec).padStart(2, "0")}`;
+    return `${m}:${String(sec).padStart(2, "0")}`;
+  }
+
   YTCAL.core = {
     TAG,
     log,
@@ -435,6 +492,7 @@
     parseAgeHours,
     extractViews,
     parseMonthDate,
+    parseDurationSec,
     ITEM_SELECTOR,
     findItems,
     isOutermost,
@@ -458,5 +516,6 @@
     baselineOf,
     formatNumber,
     formatAgeHours,
+    formatDurationSec,
   };
 })();

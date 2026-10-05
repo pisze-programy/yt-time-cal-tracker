@@ -5,7 +5,7 @@ const path = require("path");
 global.window = global;
 window.YTCAL_FEATURES = {
   thresholds: {
-    commentWeight: 3,
+    commentWeight: 1,
     minViewsForScore: 100,
     lowQualityMaxViews: 100,
     lowQualityMinAgeHours: 6,
@@ -15,6 +15,8 @@ window.YTCAL_FEATURES = {
     lowQualityMaxEngagement: 0.002,
     priorViews: 30,
     priorHours: 3,
+    durationWeight: 0.25,
+    durationNeutralMin: 8,
   },
 };
 window.ytInitialData = null;
@@ -96,6 +98,16 @@ ok(
   "parseMonthDate PL"
 );
 
+// --- duration parsing / length adjustment ---
+eq(c.parseDurationSec("1:00:24"), 3624, "duration clock H:MM:SS");
+eq(c.parseDurationSec("6:03"), 363, "duration clock M:SS");
+eq(c.parseDurationSec("1 godzina i 24 sekundy"), 3624, "duration aria PL hours");
+eq(c.parseDurationSec("28 minut i 16 sekund"), 1696, "duration aria PL minutes");
+eq(c.formatDurationSec(3624), "1:00:24", "format duration");
+const shortVid = c.analyze({ views: 10000, ageHours: 12, durationSec: 60 });
+const longVid = c.analyze({ views: 10000, ageHours: 12, durationSec: 3600 });
+ok(longVid.score > shortVid.score, `longer video scores higher (${longVid.score.toFixed(1)} > ${shortVid.score.toFixed(1)})`);
+
 // --- Wilson lower bound ---
 ok(c.wilsonLowerBound(0, 18) === 0, "0/18 -> 0");
 ok(c.wilsonLowerBound(1, 1) < c.wilsonLowerBound(60, 100), "1/1 < 60/100 (small sample)");
@@ -116,7 +128,7 @@ ok(c.isLowQuality({ views: 100000, ageHours: 720, lb: 0.0005 }, T), "many views 
 // A: user's sample — high engagement must yield Strong, and engagement label "high"
 const A = c.analyze({ views: 9500, likes: 347, comments: 69, ageHours: 120 });
 eq(A.verdict, "Strong", "A verdict Strong");
-eq(A.labels.engagement, "high", "A engagement label high");
+eq(A.labels.engagement, "above average", "A engagement label above average");
 ok(Math.abs(A.confidence - 1) < 1e-9, "A confidence 1.0");
 
 // B: same video on a tile (no likes) — reach only (velocity faded for old videos).
@@ -133,14 +145,14 @@ eq(G.labels.velocity, "not weighted (old)", "G velocity label");
 
 // C: missing engagement is neutral, not a different weight vector.
 // Compare watch with engagement at the baseline against the no-engagement tile.
-const Cw = c.analyze({ views: 10000, likes: 200, comments: 23, ageHours: 12 }); // weighted 269/10000 ~ baseline ER
+const Cw = c.analyze({ views: 10000, likes: 230, comments: 27, ageHours: 12 }); // (L+C)/V ~ median ER
 const Ct = c.analyze({ views: 10000, ageHours: 12 });
 ok(Math.abs(Cw.score - Ct.score) < 3, `C tile/watch agree at typical engagement (${Cw.score.toFixed(1)} vs ${Ct.score.toFixed(1)})`);
 eq(Cw.verdict, Ct.verdict, "C verdict agrees");
 eq(c.scoreFromZ(0, 0, 0), 50, "score at baseline z=0 is 50");
 
 // D: boosted — must be Suspicious, never "Strong + boosted"
-const D = c.analyze({ views: 100000, likes: 200, comments: 10, ageHours: 3 });
+const D = c.analyze({ views: 100000, likes: 280, comments: 20, ageHours: 3 });
 eq(D.verdict, "Suspicious", "D verdict Suspicious");
 ok(D.verdict !== "Strong", "D never Strong");
 
