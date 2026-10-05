@@ -15,8 +15,6 @@
     #el = null;
     #html = "";
     #expanded = false;
-    #dislikes = new Map();
-    #loading = new Set();
 
     get enabled() {
       return !window.YTCAL_FEATURES || window.YTCAL_FEATURES.watchStats !== false;
@@ -61,8 +59,6 @@
         comments: d.comments,
       });
       if (!a) return;
-
-      if (d.videoId) this.#maybeLoadDislikes(d.videoId);
 
       if (!this.#el || !document.contains(this.#el)) {
         this.#el = document.createElement("div");
@@ -109,26 +105,6 @@
         this.#el = null;
         this.#html = "";
       }
-    }
-
-    // Dislikes are not public since Dec 2021; the only source is the third-party
-    // Return YouTube Dislike API (an estimate). Sent: video id only.
-    #maybeLoadDislikes(id) {
-      if (!id || this.#dislikes.has(id) || this.#loading.has(id)) return;
-      this.#loading.add(id);
-      fetch(`https://returnyoutubedislikeapi.com/votes?videoId=${encodeURIComponent(id)}`, {
-        credentials: "omit",
-      })
-        .then((r) => (r.ok ? r.json() : null))
-        .then((data) => {
-          this.#loading.delete(id);
-          if (data && Number.isFinite(data.dislikes) && data.dislikes > 0) {
-            this.#dislikes.set(id, data.dislikes);
-            this.#html = "";
-            this.render();
-          }
-        })
-        .catch(() => this.#loading.delete(id));
     }
 
     #collect() {
@@ -211,7 +187,6 @@
       const baseVph = Math.max(0, Math.round(Math.pow(10, core.baselineOf("vph").mean) - 1));
       const baseEr = core.baselineOf("er").mean || 0.025;
       const erPct = m.rawRate != null ? (m.rawRate * 100).toFixed(2) : null;
-      const dislikes = d.videoId ? this.#dislikes.get(d.videoId) : null;
 
       const lenNote =
         m.durFactor && Math.abs(m.durFactor - 1) > 0.01
@@ -235,7 +210,6 @@
       row.push(`<span class="ytcal-stat" title="published ${core.formatAgeHours(m.ageHours)} ago">⏱ <b>${core.formatAgeHours(m.ageHours)}</b></span>`);
       if (m.durationSec != null) row.push(`<span class="ytcal-stat" title="video length">⏳ <b>${core.formatDurationSec(m.durationSec)}</b></span>`);
       if (m.likes != null) row.push(`<span class="ytcal-stat" title="${core.formatNumber(m.likes)} likes">👍 <b>${core.formatNumber(m.likes)}</b></span>`);
-      if (dislikes != null) row.push(`<span class="ytcal-stat" title="Dislikes (estimated by Return YouTube Dislike)">👎 <b>${core.formatNumber(dislikes)}</b></span>`);
       if (m.comments != null) row.push(`<span class="ytcal-stat" title="${core.formatNumber(m.comments)} comments">💬 <b>${core.formatNumber(m.comments)}</b></span>`);
       row.push(`<span class="ytcal-stat" title="${velocityTip}">⚡ <b>${Math.round(m.vph)}/h</b></span>`);
       if (erPct != null) row.push(`<span class="ytcal-stat" title="${engagementTip}">❤️ <b>${erPct}%</b></span>`);
