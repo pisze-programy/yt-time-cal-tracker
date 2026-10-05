@@ -54,7 +54,7 @@
       if (!a) return;
 
       // Observe once per video (deduplicated in core); scoring itself is pure.
-      core.observe(d.videoId, { views: d.views, ageHours: d.ageHours, lb: a.metrics.lb });
+      core.observe(d.videoId, { views: d.views, ageHours: d.ageHours, lb: a.metrics.lb, score: a.score });
 
       if (!this.#el || !document.contains(this.#el)) {
         this.#el = document.createElement("div");

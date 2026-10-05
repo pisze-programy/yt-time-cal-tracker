@@ -22,9 +22,5 @@ window.YTCAL_FEATURES = {
     commentWeight: 3,               // comment weight relative to a like (comments/view ~ 1/3 likes/view)
     priorViews: 30,                 // Bayesian smoothing for view velocity
     priorHours: 3,
-    // Verdict bands (0-100 aggregate score). One verdict is rendered per video.
-    verdictTopScore: 82,
-    verdictStrongScore: 60,
-    verdictAverageScore: 30,
   },
 };

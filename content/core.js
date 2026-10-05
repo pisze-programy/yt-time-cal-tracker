@@ -274,7 +274,7 @@
 
   // Side-effect-free observation, deduplicated by video id, so repeated
   // rendering of the same video cannot pollute the baseline (the old AVG-50 bug).
-  function observe(videoId, { views, ageHours, lb }) {
+  function observe(videoId, { views, ageHours, lb, score }) {
     if (videoId) {
       if (observed.has(videoId)) return false;
       observed.add(videoId);
@@ -284,6 +284,7 @@
       running.vph.push(Math.log10(smoothedVph(views, ageHours) + 1));
     }
     if (lb != null) running.er.push(lb);
+    if (score != null) recordScore(score);
     return true;
   }
 
@@ -292,10 +293,41 @@
     running.vph = new Running();
     running.er = new Running();
     observed.clear();
+    scoreHistory.length = 0;
   }
 
   function baselineCount() {
     return running.views.n;
+  }
+
+  // Rolling distribution of observed scores, used to spread verdicts across the feed instead of
+  // collapsing every decent video into a single top band. Sorted for O(log n) percentile lookup.
+  const scoreHistory = [];
+  const SCORE_HISTORY_MAX = 400;
+
+  function recordScore(score) {
+    if (!Number.isFinite(score)) return;
+    let lo = 0;
+    let hi = scoreHistory.length;
+    while (lo < hi) {
+      const mid = (lo + hi) >> 1;
+      if (scoreHistory[mid] < score) lo = mid + 1;
+      else hi = mid;
+    }
+    scoreHistory.splice(lo, 0, score);
+    if (scoreHistory.length > SCORE_HISTORY_MAX) scoreHistory.shift();
+  }
+
+  function percentileOf(score) {
+    if (scoreHistory.length < 50) return null;
+    let lo = 0;
+    let hi = scoreHistory.length;
+    while (lo < hi) {
+      const mid = (lo + hi) >> 1;
+      if (scoreHistory[mid] < score) lo = mid + 1;
+      else hi = mid;
+    }
+    return lo / scoreHistory.length;
   }
 
   // Low-quality rule. Feed/sidebar expose no like counts, so engagement is usually unknown.
@@ -334,9 +366,12 @@
 
   const VERDICT_KEY = {
     Low: "low",
+    Weak: "weak",
     Suspicious: "suspicious",
     Average: "average",
+    Good: "good",
     Strong: "strong",
+    Excellent: "excellent",
     Top: "top",
   };
 
@@ -354,18 +389,32 @@
     return 100 / (1 + Math.exp(-raw));
   }
 
-  function verdictOf(score, input, z) {
-    const t = thresholds();
-    if (isLowQuality(input, t)) return "Low";
-    const engagementKnown = input.engagementKnown;
-    if (engagementKnown && z.e <= -1 && (z.v >= 1 || z.p >= 1)) return "Suspicious";
-    const top = t.verdictTopScore != null ? t.verdictTopScore : 82;
-    const strong = t.verdictStrongScore != null ? t.verdictStrongScore : 60;
-    const average = t.verdictAverageScore != null ? t.verdictAverageScore : 30;
-    if (score >= top) return "Top";
-    if (score >= strong) return "Strong";
-    if (score >= average) return "Average";
+  // 7 steps. With enough feed samples the bands follow the local percentile, so the verdict
+  // spreads instead of pinning every decent video to "Strong"; otherwise fixed score cuts.
+  function bandForScore(score) {
+    const p = percentileOf(score);
+    if (p == null) {
+      if (score < 20) return "Low";
+      if (score < 35) return "Weak";
+      if (score < 50) return "Average";
+      if (score < 66) return "Good";
+      if (score < 76) return "Strong";
+      if (score < 88) return "Excellent";
+      return "Top";
+    }
+    if (p >= 0.97) return "Top";
+    if (p >= 0.88) return "Excellent";
+    if (p >= 0.7) return "Strong";
+    if (p >= 0.5) return "Good";
+    if (p >= 0.3) return "Average";
+    if (p >= 0.1) return "Weak";
     return "Low";
+  }
+
+  function verdictOf(score, input, z) {
+    if (isLowQuality(input, thresholds())) return "Low";
+    if (input.engagementKnown && z.e <= -1 && (z.v >= 1 || z.p >= 1)) return "Suspicious";
+    return bandForScore(score);
   }
 
   // The single source of truth. Pure: it never mutates the baseline.
@@ -475,6 +524,9 @@
     observe,
     resetBaseline,
     baselineCount,
+    recordScore,
+    bandForScore,
+    percentileOf,
     componentLabel,
     scoreFromZ,
     WEIGHTS,

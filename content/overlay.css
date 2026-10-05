@@ -93,11 +93,14 @@
   white-space: nowrap;
 }
 
-.ytcal-band-low { background: #b30000; }
+.ytcal-band-low { background: #c62828; }
+.ytcal-band-weak { background: #e65100; }
+.ytcal-band-average { background: #9e9d24; }
+.ytcal-band-good { background: #7cb342; }
+.ytcal-band-strong { background: #2e7d32; }
+.ytcal-band-excellent { background: #1565c0; }
+.ytcal-band-top { background: #6a1b9a; }
 .ytcal-band-suspicious { background: #b36b00; }
-.ytcal-band-average { background: #6b6b00; }
-.ytcal-band-strong { background: #1e7a2e; }
-.ytcal-band-top { background: #5a2ec2; }
 
 /* Badge as a thumbnail overlay — top edge, right margin 8px, native badge shape. */
 .ytcal-thumb-badge {

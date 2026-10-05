@@ -70,9 +70,6 @@ window.YTCAL_FEATURES = {
     commentWeight: 3,
     priorViews: 30,
     priorHours: 3,
-    verdictTopScore: 82,
-    verdictStrongScore: 60,
-    verdictAverageScore: 30,
   },
 };
 ```
@@ -101,9 +98,11 @@ established methods:
    recent (T ≤ 48h):  score = 100 · sigmoid(0.30·z_V + 0.35·z_VPH + 0.35·z_ER)
    old    (T > 48h):  score = 100 · sigmoid(0.55·z_V + 0.00·z_VPH + 0.45·z_ER)
    ```
-   Verdict (one per video, consumed by badge + filter + watch row):
-   `Low` (absolute low-quality rule wins) · `Suspicious` (high reach, very low engagement)
-   · `Top ≥ 82` · `Strong ≥ 60` · `Average ≥ 30` · else `Low`.
+   Verdict (one per video, consumed by badge + filter + watch row): 7 steps —
+   `Low` (absolute low-quality policy wins) · `Weak` · `Average` · `Good` · `Strong`
+   · `Excellent` · `Top`, plus `Suspicious` (high reach, very low engagement).
+   With ≥50 feed samples the steps follow the local score percentile (so verdicts spread
+   across your feed); before that they use fixed score cuts (20/35/50/66/76/88).
 
    Scoring is **pure** — rendering never mutates the baseline (that old side effect pinned
    the score to ~50/AVG while absolute ER stayed high). Baseline observations are deduplicated

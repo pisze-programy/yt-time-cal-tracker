@@ -113,7 +113,7 @@ ok(Math.abs(A.confidence - 1) < 1e-9, "A confidence 1.0");
 // B: same video on a tile (no likes) — reach+velocity only, lower confidence.
 // Without engagement the aggregate cannot credit it (zE neutral), so the band may sit one step lower.
 const B = c.analyze({ views: 9500, ageHours: 120 });
-eq(B.verdict, "Average", "B raster: reach+velocity only -> Average");
+eq(B.verdict, "Good", "B raster: reach+velocity only -> Good");
 ok(Math.abs(B.confidence - 0.55) < 1e-9, "B confidence 0.55 (old: velocity unweighted)");
 eq(B.labels.engagement, "unknown", "B engagement unknown");
 
@@ -147,6 +147,23 @@ ok(hiEng.score > loEng.score, `engagement raises score (${hiEng.score.toFixed(1)
 const hiReach = c.analyze({ views: 500000, ageHours: 24 });
 const loReach = c.analyze({ views: 5000, ageHours: 24 });
 ok(hiReach.score > loReach.score, `reach raises score (${hiReach.score.toFixed(1)} > ${loReach.score.toFixed(1)})`);
+
+// --- 7-step bands: fixed cuts before enough history, then percentile ---
+c.resetBaseline();
+eq(c.bandForScore(10), "Low", "fixed band 10 -> Low");
+eq(c.bandForScore(30), "Weak", "fixed band 30 -> Weak");
+eq(c.bandForScore(45), "Average", "fixed band 45 -> Average");
+eq(c.bandForScore(55), "Good", "fixed band 55 -> Good");
+eq(c.bandForScore(68), "Strong", "fixed band 68 -> Strong");
+eq(c.bandForScore(80), "Excellent", "fixed band 80 -> Excellent");
+eq(c.bandForScore(95), "Top", "fixed band 95 -> Top");
+
+c.resetBaseline();
+for (let i = 0; i < 100; i++) c.recordScore(i);
+eq(c.bandForScore(99), "Top", "percentile p99 -> Top");
+eq(c.bandForScore(50), "Good", "percentile p50 -> Good");
+eq(c.bandForScore(5), "Low", "percentile p5 -> Low");
+c.resetBaseline();
 
 // --- baseline purity: analysis must not move the baseline ---
 c.resetBaseline();
