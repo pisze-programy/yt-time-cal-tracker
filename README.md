@@ -94,11 +94,12 @@ established methods:
 3. **Channel-relative outlier** (vidIQ-style) — `outlier = vph / channelBaseline`.
 4. **Momentum / drop** — derivative of VPH over time from `(V, t)` snapshots.
 5. **Aggregate 0–100** — `core.analyze()` is the single, side-effect-free source of truth.
-   One constant weight vector for every surface; missing engagement is neutral (`zE = 0`),
-   so a tile and the watch row agree whenever engagement is typical:
+   One weight vector per age class; missing engagement is neutral (`zE = 0`), so a tile and the
+   watch row agree whenever engagement is typical. Velocity only informs the score for recent
+   uploads — for older videos views/hour is a lifetime average and is not weighted:
    ```
-   z = clamp((x − μ)/σ, −3, 3)                       # μ/σ self-calibrate from the feed (Welford)
-   score = 100 · sigmoid(0.30·z_V + 0.35·z_VPH + 0.35·z_ER)
+   recent (T ≤ 48h):  score = 100 · sigmoid(0.30·z_V + 0.35·z_VPH + 0.35·z_ER)
+   old    (T > 48h):  score = 100 · sigmoid(0.55·z_V + 0.00·z_VPH + 0.45·z_ER)
    ```
    Verdict (one per video, consumed by badge + filter + watch row):
    `Low` (absolute low-quality rule wins) · `Suspicious` (high reach, very low engagement)

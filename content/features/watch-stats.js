@@ -144,7 +144,9 @@
       const baseEr = core.baselineOf("er").mean || 0.025;
       const erPct = m.rawRate != null ? (m.rawRate * 100).toFixed(2) : null;
 
-      const velocityTip = `${Math.round(m.vph)} views/hour (smoothed). Your usual: ~${baseVph}/h — ${a.labels.velocity}.`;
+      const velocityTip = m.recent
+        ? `${Math.round(m.vph)} views/hour (smoothed). Your usual: ~${baseVph}/h — ${a.labels.velocity}.`
+        : `${Math.round(m.vph)} views/hour (lifetime average; not used in the score for older videos).`;
       const engagementTip =
         m.rawRate != null
           ? `${erPct}% engagement = (likes + 3×comments) / views. Your usual: ~${(baseEr * 100).toFixed(1)}% — ${a.labels.engagement}. Wilson 95% lower bound: ${(m.lb * 100).toFixed(2)}%.`

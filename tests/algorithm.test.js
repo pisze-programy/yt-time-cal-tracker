@@ -55,6 +55,8 @@ eq(c.parseLocalizedNumber("84 tysiące wyświetleń"), 84000, "84 tysiące wyśw
 eq(c.parseLocalizedNumber("71 tysięcy wyświetleń"), 71000, "71 tysięcy wyświetleń");
 eq(c.parseLocalizedNumber("2 miliony wyświetleń"), 2000000, "2 miliony");
 eq(c.parseLocalizedNumber("1 234 komentarzy"), 1234, "1 234 komentarzy (no false scale)");
+eq(c.parseLocalizedNumber("101 tysięcy wyświetleń"), 101000, "101 tysięcy");
+eq(c.parseAgeHours("11 miesięcy temu"), 7920, "11 miesięcy");
 eq(c.parseLocalizedNumber(""), null, "empty -> null");
 
 // --- age parsing ---
@@ -104,8 +106,14 @@ ok(Math.abs(A.confidence - 1) < 1e-9, "A confidence 1.0");
 // Without engagement the aggregate cannot credit it (zE neutral), so the band may sit one step lower.
 const B = c.analyze({ views: 9500, ageHours: 120 });
 eq(B.verdict, "Average", "B raster: reach+velocity only -> Average");
-ok(Math.abs(B.confidence - 0.65) < 1e-9, "B confidence 0.65");
+ok(Math.abs(B.confidence - 0.55) < 1e-9, "B confidence 0.55 (old: velocity unweighted)");
 eq(B.labels.engagement, "unknown", "B engagement unknown");
+
+// G: old popular video (101k views / 11 months) must not be penalized by lifetime VPH.
+const G = c.analyze({ views: 101000, ageHours: 7920 });
+ok(G.verdict === "Strong" || G.verdict === "Top", `G old popular not penalized (${G.verdict} ${G.score.toFixed(1)})`);
+eq(G.metrics.recent, false, "G old -> velocity not weighted");
+eq(G.labels.velocity, "not weighted (old)", "G velocity label");
 
 // C: missing engagement is neutral, not a different weight vector.
 // Compare watch with engagement at the baseline against the no-engagement tile.

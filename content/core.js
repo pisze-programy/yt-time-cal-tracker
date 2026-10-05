@@ -326,9 +326,11 @@
     return views < maxViewsOld;
   }
 
-  // Constant weight vector for every surface. Missing engagement is neutral (zE = 0),
-  // never a different weight vector — so tile and watch agree whenever engagement is typical.
+  // Constant weight vectors. Velocity only informs the score for recent uploads:
+  // for old videos views/hour is a lifetime average and must not be weighted (Finding: old-video
+  // popularity was being scored as if it had no traction). Missing engagement is neutral (zE = 0).
   const WEIGHTS = { v: 0.3, p: 0.35, e: 0.35 };
+  const OLD_WEIGHTS = { v: 0.55, p: 0.0, e: 0.45 };
 
   const VERDICT_KEY = {
     Low: "low",
@@ -346,8 +348,9 @@
     return "typical";
   }
 
-  function scoreFromZ(zV, zP, zE) {
-    const raw = WEIGHTS.v * zV + WEIGHTS.p * zP + WEIGHTS.e * zE;
+  function scoreFromZ(zV, zP, zE, w) {
+    w = w || WEIGHTS;
+    const raw = w.v * zV + w.p * zP + w.e * zE;
     return 100 / (1 + Math.exp(-raw));
   }
 
@@ -395,8 +398,13 @@
         ? clamp(Math.log2(vph / channelVph), -3, 3)
         : 0;
 
-    const score = scoreFromZ(zV, zP, zE);
-    const confidence = WEIGHTS.v + WEIGHTS.p + (engagementKnown ? WEIGHTS.e : 0);
+    // Velocity is only meaningful for recent uploads; old videos are judged by reach + engagement.
+    const oldHours = t.lowQualityOldHours != null ? t.lowQualityOldHours : 48;
+    const recent = ageHours == null || ageHours <= oldHours;
+    const W = recent ? WEIGHTS : OLD_WEIGHTS;
+
+    const score = scoreFromZ(zV, zP, zE, W);
+    const confidence = W.v + W.p + (engagementKnown ? W.e : 0);
     const z = { v: zV, p: zP, e: zE, o: zO };
     const verdict = verdictOf(score, { views, ageHours, lb, engagementKnown }, z);
 
@@ -410,7 +418,7 @@
     }
 
     return {
-      metrics: { views, likes: L, comments: C, ageHours, vph, lb, rawRate, engagementKnown },
+      metrics: { views, likes: L, comments: C, ageHours, vph, lb, rawRate, engagementKnown, recent },
       z,
       score,
       confidence,
@@ -418,7 +426,11 @@
       reason,
       band: VERDICT_KEY[verdict],
       // per-component qualitative labels share the exact z used by the aggregate
-      labels: { reach: componentLabel(zV), velocity: componentLabel(zP), engagement: engagementKnown ? componentLabel(zE) : "unknown" },
+      labels: {
+        reach: componentLabel(zV),
+        velocity: recent ? componentLabel(zP) : "not weighted (old)",
+        engagement: engagementKnown ? componentLabel(zE) : "unknown",
+      },
     };
   }
 
