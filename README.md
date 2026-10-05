@@ -88,24 +88,18 @@ established methods:
    lb = (p + z²/2n − z·√((p(1−p)+z²/4n)/n)) / (1 + z²/n),  z = 1.96
    ```
 2. **Bayesian-smoothed view velocity** — `vph = (V + m) / (T + T0)`, `m = 30`, `T0 = 3h`.
-3. **Channel-relative outlier** (vidIQ-style) — `outlier = vph / channelBaseline`.
-4. **Momentum / drop** — derivative of VPH over time from `(V, t)` snapshots.
-5. **Aggregate 0–100** — `core.analyze()` is the single, side-effect-free source of truth.
-   One weight vector per age class; missing engagement is neutral (`zE = 0`), so a tile and the
-   watch row agree whenever engagement is typical. Velocity only informs the score for recent
-   uploads — for older videos views/hour is a lifetime average and is not weighted:
+3. **Aggregate 0–100** — `core.analyze()` scores each video **only from its own data + age**,
+   against a fixed reference (no feed comparison, deterministic):
    ```
-   recent (T ≤ 48h):  score = 100 · sigmoid(0.30·z_V + 0.35·z_VPH + 0.35·z_ER)
-   old    (T > 48h):  score = 100 · sigmoid(0.55·z_V + 0.00·z_VPH + 0.45·z_ER)
+   z = clamp((x − μ)/σ, −3, 3)                    // μ/σ are fixed constants
+   f = clamp((T − 24) / 48, 0, 1)                 // velocity fades out 24h → 72h
+   score = 100 · sigmoid((0.30+0.35·f)·z_V + 0.35·(1−f)·z_VPH + 0.35·z_ER)
    ```
+   Missing engagement is neutral (`z_ER = 0`) and reported as `confidence 0.65` (vs 1.0).
    Verdict (one per video, consumed by badge + filter + watch row): 7 steps —
    `Low` (absolute low-quality policy wins) · `Weak` · `Average` · `Good` · `Strong`
    · `Excellent` · `Top`, plus `Suspicious` (high reach, very low engagement).
-   Bands use fixed score cuts (20/35/50/66/76/88) and are deterministic.
-
-   Scoring is **pure** — rendering never mutates the baseline (that old side effect pinned
-   the score to ~50/AVG while absolute ER stayed high). Baseline observations are deduplicated
-   by video id.
+   Bands use fixed score cuts (20/35/50/66/76/88).
 
 Low-quality rule (feeds/sidebar expose no like counts). Fresh videos are not judged
 by velocity, and old videos are judged by total reach because views/hour decays:

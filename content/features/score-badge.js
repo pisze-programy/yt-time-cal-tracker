@@ -39,11 +39,8 @@
         const meta = core.extractMetadata(el);
         if (meta.views == null || meta.views < minViews) continue;
 
-        const id = core.getVideoId(el);
         const a = core.analyze({ views: meta.views, ageHours: meta.ageHours });
         if (!a) continue;
-
-        if (id) core.observe(id, { views: meta.views, ageHours: meta.ageHours, lb: a.metrics.lb });
 
         this.#injectBadge(el, a);
       }
@@ -60,7 +57,9 @@
     }
 
     #tooltip(a) {
-      const parts = [`${a.verdict} (${Math.round(a.score)}/100)`];
+      const scoreTxt =
+        a.verdict === "Low" || a.verdict === "Suspicious" ? "" : ` (${Math.round(a.score)}/100)`;
+      const parts = [`${a.verdict}${scoreTxt}`];
       if (a.reason) parts.push(a.reason);
       parts.push(`Reach: ${a.labels.reach}`);
       parts.push(`Velocity: ${a.labels.velocity}`);

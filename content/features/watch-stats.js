@@ -53,9 +53,6 @@
       });
       if (!a) return;
 
-      // Observe once per video (deduplicated in core); scoring itself is pure.
-      core.observe(d.videoId, { views: d.views, ageHours: d.ageHours, lb: a.metrics.lb });
-
       if (!this.#el || !document.contains(this.#el)) {
         this.#el = document.createElement("div");
         this.#el.className = "ytcal-watch-stats";
@@ -145,13 +142,16 @@
       const erPct = m.rawRate != null ? (m.rawRate * 100).toFixed(2) : null;
 
       const velocityTip = m.recent
-        ? `${Math.round(m.vph)} views/hour (smoothed). Your usual: ~${baseVph}/h — ${a.labels.velocity}.`
+        ? `${Math.round(m.vph)} views/hour (smoothed). Typical ~${baseVph}/h — ${a.labels.velocity}.`
         : `${Math.round(m.vph)} views/hour (lifetime average; not used in the score for older videos).`;
       const engagementTip =
         m.rawRate != null
-          ? `${erPct}% engagement = (likes + 3×comments) / views. Your usual: ~${(baseEr * 100).toFixed(1)}% — ${a.labels.engagement}. Wilson 95% lower bound: ${(m.lb * 100).toFixed(2)}%.`
+          ? `${erPct}% engagement = (likes + 3×comments) / views. Typical ~${(baseEr * 100).toFixed(1)}% — ${a.labels.engagement}. Wilson 95% lower bound: ${(m.lb * 100).toFixed(2)}%.`
           : "";
-      const verdictTip = `${a.verdict} (${Math.round(a.score)}/100)${a.reason ? " · " + a.reason : ""}. Reach: ${a.labels.reach} · Velocity: ${a.labels.velocity} · Engagement: ${m.engagementKnown ? a.labels.engagement : "unknown"}.`;
+      const scoreTxt =
+        a.verdict === "Low" || a.verdict === "Suspicious" ? "" : ` (${Math.round(a.score)}/100)`;
+      const why = a.reason ? ` · ${a.reason}` : "";
+      const verdictTip = `${a.verdict}${scoreTxt}${why}. Reach: ${a.labels.reach} · Velocity: ${a.labels.velocity} · Engagement: ${m.engagementKnown ? a.labels.engagement : "unknown"}.`;
 
       const parts = [];
       parts.push(`<span class="ytcal-stat" title="${core.formatNumber(m.views)} views">👁 <b>${core.formatNumber(m.views)}</b></span>`);
@@ -161,13 +161,8 @@
       parts.push(`<span class="ytcal-stat" title="${velocityTip}">⚡ <b>${Math.round(m.vph)}/h</b></span>`);
       if (erPct != null) parts.push(`<span class="ytcal-stat" title="${engagementTip}">❤️ <b>${erPct}%</b></span>`);
 
-      if (!m.engagementKnown) {
-        parts.push(
-          `<span class="ytcal-badge ytcal-band-average ytcal-muted" title="${verdictTip}">reach &amp; velocity only</span>`
-        );
-      } else {
-        parts.push(`<span class="ytcal-badge ytcal-band-${a.band}" title="${verdictTip}">${a.verdict}</span>`);
-      }
+      parts.push(`<span class="ytcal-badge ytcal-band-${a.band}" title="${verdictTip}">${a.verdict}</span>`);
+      if (!m.engagementKnown) parts.push('<span class="ytcal-muted">reach &amp; velocity only</span>');
 
       const line = `<span class="ytcal-verdict-line">${this.#verdictLine(a, m, baseVph, baseEr)}</span>`;
       return parts.join(SEP) + line;
@@ -176,12 +171,14 @@
     // Human-readable explanation that reuses the per-component labels from core.analyze,
     // so the visible words and the aggregate can never disagree.
     #verdictLine(a, m, baseVph, baseEr) {
-      const usual = `your usual ~${baseVph}/h · ~${(baseEr * 100).toFixed(1)}% ER`;
+      const typical = `typical ~${baseVph}/h · ~${(baseEr * 100).toFixed(1)}% ER`;
       if (!m.engagementKnown) {
-        return `Judged on reach &amp; velocity only — vs your feed: reach <b>${a.labels.reach}</b> · velocity <b>${a.labels.velocity}</b>. Likes/comments unavailable.`;
+        return `Judged on reach &amp; velocity only — reach <b>${a.labels.reach}</b> · velocity <b>${a.labels.velocity}</b>. Likes/comments unavailable.`;
       }
+      const scoreTxt =
+        a.verdict === "Low" || a.verdict === "Suspicious" ? "" : ` (${Math.round(a.score)}/100)`;
       const why = a.reason ? ` — ${a.reason}` : "";
-      return `${a.verdict} <span class="ytcal-muted">(${Math.round(a.score)}/100${why})</span> · vs your feed: reach <b>${a.labels.reach}</b> · velocity <b>${a.labels.velocity}</b> · engagement <b>${a.labels.engagement}</b> · ${usual}.`;
+      return `${a.verdict}${scoreTxt}${why} · reach <b>${a.labels.reach}</b> · velocity <b>${a.labels.velocity}</b> · engagement <b>${a.labels.engagement}</b> · ${typical}.`;
     }
   };
 })();

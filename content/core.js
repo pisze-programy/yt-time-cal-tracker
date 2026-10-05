@@ -240,62 +240,17 @@
     return (views + m) / (Math.max(ageHours, 0) + t0);
   }
 
-  class Running {
-    constructor() {
-      this.n = 0;
-      this.mean = 0;
-      this.m2 = 0;
-    }
-    push(x) {
-      this.n++;
-      const d = x - this.mean;
-      this.mean += d / this.n;
-      this.m2 += d * (x - this.mean);
-    }
-    get std() {
-      return this.n > 1 ? Math.sqrt(this.m2 / (this.n - 1)) : 0;
-    }
-  }
-
-  // Fixed reference used until enough samples are collected.
-  const FALLBACK = {
+  // Pinned reference (deterministic). The running self-calibrating mean/std was removed: it made
+  // scores relative to the feed, so a 1.1M-view video could be labelled "Low" in a feed full of
+  // millions (and flipped at the n>=30 switch). A fixed reference keeps scores monotonic in magnitude.
+  const REFERENCE = {
     views: { mean: 3.3, std: 1.3 }, // log10(views+1)
     vph: { mean: 1.6, std: 0.9 }, // log10(vph+1) ~= 40 views/hour
     er: { mean: 0.025, std: 0.02 }, // wilson lower bound
   };
-  const running = { views: new Running(), vph: new Running(), er: new Running() };
-  const observed = new Set();
 
-  function statOf(key) {
-    const r = running[key];
-    if (r.n >= 30) return { mean: r.mean, std: Math.max(r.std, 1e-6) };
-    return FALLBACK[key];
-  }
-
-  // Side-effect-free observation, deduplicated by video id, so repeated
-  // rendering of the same video cannot pollute the baseline (the old AVG-50 bug).
-  function observe(videoId, { views, ageHours, lb }) {
-    if (videoId) {
-      if (observed.has(videoId)) return false;
-      observed.add(videoId);
-    }
-    if (views != null && views > 0) running.views.push(Math.log10(views + 1));
-    if (views != null && ageHours != null && ageHours > 0) {
-      running.vph.push(Math.log10(smoothedVph(views, ageHours) + 1));
-    }
-    if (lb != null) running.er.push(lb);
-    return true;
-  }
-
-  function resetBaseline() {
-    running.views = new Running();
-    running.vph = new Running();
-    running.er = new Running();
-    observed.clear();
-  }
-
-  function baselineCount() {
-    return running.views.n;
+  function baselineOf(key) {
+    return REFERENCE[key];
   }
 
   // Low-quality rule. Feed/sidebar expose no like counts, so engagement is usually unknown.
@@ -326,11 +281,12 @@
     return views < maxViewsOld;
   }
 
-  // Constant weight vectors. Velocity only informs the score for recent uploads:
-  // for old videos views/hour is a lifetime average and must not be weighted (Finding: old-video
-  // popularity was being scored as if it had no traction). Missing engagement is neutral (zE = 0).
+  // Velocity only informs the score for recent uploads; for older videos views/hour is a lifetime
+  // average. Its weight ramps out smoothly between 24h and 72h (no hard cliff). Missing engagement
+  // is neutral (zE = 0). Reach + velocity always sum to 0.65.
   const WEIGHTS = { v: 0.3, p: 0.35, e: 0.35 };
-  const OLD_WEIGHTS = { v: 0.55, p: 0.0, e: 0.45 };
+  const VELOCITY_FADE_START = 24;
+  const VELOCITY_FADE_END = 72;
 
   const VERDICT_KEY = {
     Low: "low",
@@ -374,8 +330,8 @@
     return bandForScore(score);
   }
 
-  // The single source of truth. Pure: it never mutates the baseline.
-  function analyze({ views, likes, comments, ageHours, channelVph }) {
+  // The single source of truth. Pure and deterministic (no baseline side effects).
+  function analyze({ views, likes, comments, ageHours }) {
     if (views == null || views <= 0) return null;
     const t = thresholds();
     const commentWeight = t.commentWeight != null ? t.commentWeight : 3;
@@ -391,27 +347,23 @@
     const age = ageHours != null ? ageHours : 1;
     const vph = smoothedVph(views, age);
 
-    const sv = statOf("views");
-    const sp = statOf("vph");
-    const se = statOf("er");
+    const sv = REFERENCE.views;
+    const sp = REFERENCE.vph;
+    const se = REFERENCE.er;
 
     const zV = clamp((Math.log10(views + 1) - sv.mean) / sv.std, -3, 3);
     const zP = clamp((Math.log10(vph + 1) - sp.mean) / sp.std, -3, 3);
     const zE = engagementKnown ? clamp((lb - se.mean) / se.std, -3, 3) : 0;
 
-    const zO =
-      Number.isFinite(channelVph) && channelVph > 0
-        ? clamp(Math.log2(vph / channelVph), -3, 3)
-        : 0;
-
-    // Velocity is only meaningful for recent uploads; old videos are judged by reach + engagement.
-    const oldHours = t.lowQualityOldHours != null ? t.lowQualityOldHours : 48;
-    const recent = ageHours == null || ageHours <= oldHours;
-    const W = recent ? WEIGHTS : OLD_WEIGHTS;
+    // Velocity weight fades out between 24h and 72h (lifetime average beyond that).
+    const ageH = ageHours != null ? ageHours : 0;
+    const f = clamp((ageH - VELOCITY_FADE_START) / (VELOCITY_FADE_END - VELOCITY_FADE_START), 0, 1);
+    const W = { v: WEIGHTS.v + WEIGHTS.p * f, p: WEIGHTS.p * (1 - f), e: WEIGHTS.e };
+    const recent = f < 1;
 
     const score = scoreFromZ(zV, zP, zE, W);
     const confidence = W.v + W.p + (engagementKnown ? W.e : 0);
-    const z = { v: zV, p: zP, e: zE, o: zO };
+    const z = { v: zV, p: zP, e: zE };
     const verdict = verdictOf(score, { views, ageHours, lb, engagementKnown }, z);
 
     let reason = null;
@@ -478,15 +430,13 @@
     smoothedVph,
     isLowQuality,
     analyze,
-    observe,
-    resetBaseline,
-    baselineCount,
     bandForScore,
     componentLabel,
     scoreFromZ,
     WEIGHTS,
+    REFERENCE,
+    baselineOf,
     formatNumber,
     formatAgeHours,
-    baselineOf: statOf,
   };
 })();

@@ -15,9 +15,6 @@ window.YTCAL_FEATURES = {
     lowQualityMaxEngagement: 0.002,
     priorViews: 30,
     priorHours: 3,
-    verdictTopScore: 82,
-    verdictStrongScore: 60,
-    verdictAverageScore: 30,
   },
 };
 window.ytInitialData = null;
@@ -26,7 +23,6 @@ eval(fs.readFileSync(path.join(__dirname, "..", "content", "core.js"), "utf8"));
 
 const c = window.YTCAL.core;
 const T = window.YTCAL_FEATURES.thresholds;
-c.resetBaseline();
 
 let pass = 0;
 let fail = 0;
@@ -110,11 +106,10 @@ eq(A.verdict, "Strong", "A verdict Strong");
 eq(A.labels.engagement, "high", "A engagement label high");
 ok(Math.abs(A.confidence - 1) < 1e-9, "A confidence 1.0");
 
-// B: same video on a tile (no likes) — reach+velocity only, lower confidence.
-// Without engagement the aggregate cannot credit it (zE neutral), so the band may sit one step lower.
+// B: same video on a tile (no likes) — reach only (velocity faded for old videos).
 const B = c.analyze({ views: 9500, ageHours: 120 });
-eq(B.verdict, "Good", "B raster: reach+velocity only -> Good");
-ok(Math.abs(B.confidence - 0.55) < 1e-9, "B confidence 0.55 (old: velocity unweighted)");
+eq(B.verdict, "Good", "B raster: reach-only -> Good");
+ok(Math.abs(B.confidence - 0.65) < 1e-9, "B confidence 0.65 (reach+velocity, engagement unknown)");
 eq(B.labels.engagement, "unknown", "B engagement unknown");
 
 // G: old popular video (101k views / 11 months) must not be penalized by lifetime VPH.
@@ -148,8 +143,7 @@ const hiReach = c.analyze({ views: 500000, ageHours: 24 });
 const loReach = c.analyze({ views: 5000, ageHours: 24 });
 ok(hiReach.score > loReach.score, `reach raises score (${hiReach.score.toFixed(1)} > ${loReach.score.toFixed(1)})`);
 
-// --- 7-step bands (fixed score cuts) ---
-c.resetBaseline();
+// --- 7-step bands (fixed score cuts; no feed dependence) ---
 eq(c.bandForScore(10), "Low", "band 10 -> Low");
 eq(c.bandForScore(30), "Weak", "band 30 -> Weak");
 eq(c.bandForScore(45), "Average", "band 45 -> Average");
@@ -158,16 +152,11 @@ eq(c.bandForScore(68), "Strong", "band 68 -> Strong");
 eq(c.bandForScore(80), "Excellent", "band 80 -> Excellent");
 eq(c.bandForScore(95), "Top", "band 95 -> Top");
 
-// --- baseline purity: analysis must not move the baseline ---
-c.resetBaseline();
-c.analyze({ views: 9500, likes: 347, comments: 69, ageHours: 120 });
-c.analyze({ views: 9500, likes: 347, comments: 69, ageHours: 120 });
-eq(c.baselineCount(), 0, "analyze is pure (no baseline mutation)");
-c.observe("v1", { views: 9500, ageHours: 120, lb: 0.05 });
-c.observe("v1", { views: 9500, ageHours: 120, lb: 0.05 });
-eq(c.baselineCount(), 1, "observe deduplicates by video id");
-c.observe("v2", { views: 1000, ageHours: 10, lb: 0.01 });
-eq(c.baselineCount(), 2, "observe adds distinct video");
+// --- determinism: analyze is pure and feed-independent ---
+const a1 = c.analyze({ views: 1100000, ageHours: 7 * 30 * 24 });
+const a2 = c.analyze({ views: 1100000, ageHours: 7 * 30 * 24 });
+eq(a1.verdict, "Excellent", "1.1M/7mo -> Excellent (not Weak)");
+eq(a1.score, a2.score, "same input -> same score (deterministic)");
 
 console.log(`\n${pass} passed, ${fail} failed`);
 process.exit(fail ? 1 : 0);

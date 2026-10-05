@@ -10,7 +10,7 @@ window.YTCAL_FEATURES = {
   // Tracks watch time and syncs it to Google Calendar.
   timeTracker: true,
 
-  // Scoring thresholds (see core.js -> computeScore / isLowQuality).
+  // Scoring thresholds (see core.js -> analyze / isLowQuality).
   thresholds: {
     minViewsForScore: 100,          // below this view count the score is noise -> skip badge
     lowQualityMaxViews: 100,        // absolute floor: fewer than X views ...

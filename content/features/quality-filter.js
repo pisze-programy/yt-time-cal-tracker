@@ -52,8 +52,6 @@
         const a = core.analyze({ views: meta.views, ageHours: meta.ageHours });
         if (!a) continue;
 
-        if (id) core.observe(id, { views: meta.views, ageHours: meta.ageHours, lb: a.metrics.lb });
-
         if (a.verdict === "Low") {
           el.classList.add("ytcal-low-quality");
           const label = el.querySelector(".ytcal-label");
