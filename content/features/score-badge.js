@@ -32,23 +32,20 @@
 
       for (const el of core.findItems()) {
         if (!core.isOutermost(el)) continue;
-        if (el.dataset.ytcalBadged) continue;
         if (core.isShort(el)) continue;
+        // Re-inject if YouTube rebuilt the thumbnail and removed our badge.
+        if (el.querySelector(".ytcal-thumb-badge, .ytcal-badge")) continue;
 
         const meta = core.extractMetadata(el);
-        if (meta.views == null) continue;
-        if (meta.views < minViews) {
-          el.dataset.ytcalBadged = "skip";
-          continue;
-        }
+        if (meta.views == null || meta.views < minViews) continue;
 
         const id = core.getVideoId(el);
         const a = core.analyze({ views: meta.views, ageHours: meta.ageHours });
         if (!a) continue;
 
-        core.observe(id, { views: meta.views, ageHours: meta.ageHours, lb: a.metrics.lb });
+        if (id) core.observe(id, { views: meta.views, ageHours: meta.ageHours, lb: a.metrics.lb });
 
-        if (this.#injectBadge(el, a)) el.dataset.ytcalBadged = "1";
+        this.#injectBadge(el, a);
       }
     }
 

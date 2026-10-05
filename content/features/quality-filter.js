@@ -38,21 +38,21 @@
 
       for (const el of core.findItems()) {
         if (!core.isOutermost(el)) continue;
-        if (el.dataset.ytcalScanned) continue;
         if (core.isShort(el)) continue;
+
+        const id = core.getVideoId(el);
+        if (id && this.#revealed.has(id)) el.classList.add("ytcal-revealed");
+
+        // Already blurred with actions present -> nothing to do.
+        if (el.classList.contains("ytcal-low-quality") && el.querySelector(".ytcal-actions")) continue;
 
         const meta = core.extractMetadata(el);
         if (meta.views == null) continue;
 
-        el.dataset.ytcalScanned = "1";
-        const id = core.getVideoId(el);
-
-        if (id && this.#revealed.has(id)) el.classList.add("ytcal-revealed");
-
         const a = core.analyze({ views: meta.views, ageHours: meta.ageHours });
         if (!a) continue;
 
-        core.observe(id, { views: meta.views, ageHours: meta.ageHours, lb: a.metrics.lb });
+        if (id) core.observe(id, { views: meta.views, ageHours: meta.ageHours, lb: a.metrics.lb });
 
         if (a.verdict === "Low") {
           el.classList.add("ytcal-low-quality");

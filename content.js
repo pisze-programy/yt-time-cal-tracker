@@ -5,16 +5,25 @@
   const YTCAL = (window.YTCAL = window.YTCAL || {});
   const F = window.YTCAL_FEATURES || {};
   const features = [];
+  const enabledKeys = [];
 
   function enabled(key) {
     return F[key] !== false;
   }
 
   function boot() {
-    if (enabled("timeTracker")) features.push(new YTCAL.TimeTrackerFeature());
-    if (enabled("qualityFilter")) features.push(new YTCAL.QualityFilterFeature());
-    if (enabled("scoreBadge")) features.push(new YTCAL.ScoreBadgeFeature());
-    if (enabled("watchStats")) features.push(new YTCAL.WatchStatsFeature());
+    const registry = [
+      ["timeTracker", YTCAL.TimeTrackerFeature],
+      ["qualityFilter", YTCAL.QualityFilterFeature],
+      ["scoreBadge", YTCAL.ScoreBadgeFeature],
+      ["watchStats", YTCAL.WatchStatsFeature],
+    ];
+    for (const [key, Cls] of registry) {
+      if (enabled(key) && typeof Cls === "function") {
+        features.push(new Cls());
+        enabledKeys.push(key);
+      }
+    }
 
     // Shared, frame-throttled mutation observer.
     let scheduled = false;
@@ -61,10 +70,7 @@
     }
     run("onNavigate");
 
-    console.log(
-      "[ytcal] loaded | features:",
-      features.map((f) => (f.constructor && f.constructor.name) || "?").join(", ")
-    );
+    console.log("[ytcal] loaded | features:", enabledKeys.join(", "));
   }
 
   if (document.body) boot();
