@@ -101,8 +101,7 @@ established methods:
    Verdict (one per video, consumed by badge + filter + watch row): 7 steps —
    `Low` (absolute low-quality policy wins) · `Weak` · `Average` · `Good` · `Strong`
    · `Excellent` · `Top`, plus `Suspicious` (high reach, very low engagement).
-   With ≥50 feed samples the steps follow the local score percentile (so verdicts spread
-   across your feed); before that they use fixed score cuts (20/35/50/66/76/88).
+   Bands use fixed score cuts (20/35/50/66/76/88) and are deterministic.
 
    Scoring is **pure** — rendering never mutates the baseline (that old side effect pinned
    the score to ~50/AVG while absolute ER stayed high). Baseline observations are deduplicated

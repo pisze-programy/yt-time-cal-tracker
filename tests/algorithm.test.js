@@ -148,22 +148,15 @@ const hiReach = c.analyze({ views: 500000, ageHours: 24 });
 const loReach = c.analyze({ views: 5000, ageHours: 24 });
 ok(hiReach.score > loReach.score, `reach raises score (${hiReach.score.toFixed(1)} > ${loReach.score.toFixed(1)})`);
 
-// --- 7-step bands: fixed cuts before enough history, then percentile ---
+// --- 7-step bands (fixed score cuts) ---
 c.resetBaseline();
-eq(c.bandForScore(10), "Low", "fixed band 10 -> Low");
-eq(c.bandForScore(30), "Weak", "fixed band 30 -> Weak");
-eq(c.bandForScore(45), "Average", "fixed band 45 -> Average");
-eq(c.bandForScore(55), "Good", "fixed band 55 -> Good");
-eq(c.bandForScore(68), "Strong", "fixed band 68 -> Strong");
-eq(c.bandForScore(80), "Excellent", "fixed band 80 -> Excellent");
-eq(c.bandForScore(95), "Top", "fixed band 95 -> Top");
-
-c.resetBaseline();
-for (let i = 0; i < 100; i++) c.recordScore(i);
-eq(c.bandForScore(99), "Top", "percentile p99 -> Top");
-eq(c.bandForScore(50), "Good", "percentile p50 -> Good");
-eq(c.bandForScore(5), "Low", "percentile p5 -> Low");
-c.resetBaseline();
+eq(c.bandForScore(10), "Low", "band 10 -> Low");
+eq(c.bandForScore(30), "Weak", "band 30 -> Weak");
+eq(c.bandForScore(45), "Average", "band 45 -> Average");
+eq(c.bandForScore(55), "Good", "band 55 -> Good");
+eq(c.bandForScore(68), "Strong", "band 68 -> Strong");
+eq(c.bandForScore(80), "Excellent", "band 80 -> Excellent");
+eq(c.bandForScore(95), "Top", "band 95 -> Top");
 
 // --- baseline purity: analysis must not move the baseline ---
 c.resetBaseline();

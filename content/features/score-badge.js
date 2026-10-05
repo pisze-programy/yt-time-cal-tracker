@@ -43,7 +43,7 @@
         const a = core.analyze({ views: meta.views, ageHours: meta.ageHours });
         if (!a) continue;
 
-        if (id) core.observe(id, { views: meta.views, ageHours: meta.ageHours, lb: a.metrics.lb, score: a.score });
+        if (id) core.observe(id, { views: meta.views, ageHours: meta.ageHours, lb: a.metrics.lb });
 
         this.#injectBadge(el, a);
       }
