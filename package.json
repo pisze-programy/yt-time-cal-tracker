@@ -1,7 +1,10 @@
 {
   "name": "yt-time-cal-tracker",
-  "version": "0.1",
-  "description": "track time on youtube with google calendar and auto summary of what watched ",
+  "version": "0.2",
+  "description": "track time on youtube with google calendar, filter low-quality videos and score views/time",
+  "scripts": {
+    "test": "node tests/algorithm.test.js"
+  },
   "dependencies": {
     "@types/firefox-webext-browser": "^143.0.0"
   }
