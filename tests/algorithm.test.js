@@ -63,6 +63,19 @@ ok(c.isAgeLabel("1 dzień temu"), "age label PL");
 ok(!c.isAgeLabel("Daniel Dalen"), "channel name is not an age label");
 eq(c.parseLocalizedNumber(""), null, "empty -> null");
 
+// --- metadata row: views fallback when the aria lacks a views keyword ---
+eq(
+  c.rowViewsText(["Daniel Dalen", "Zweryfikowano", "17", "1 dzień temu"]),
+  "17",
+  "views = numeric label before the age"
+);
+eq(
+  c.rowViewsText(["Szewczyk Travel", "101 tysięcy wyświetleń", "11 miesięcy temu"]),
+  "101 tysięcy wyświetleń",
+  "views = explicit views keyword"
+);
+eq(c.rowViewsText(["Some Channel", "1 dzień temu"]), null, "no views label -> null");
+
 // --- age parsing ---
 eq(c.parseAgeHours("7 godz. temu"), 7, "7 godz.");
 eq(c.parseAgeHours("1 dzień temu"), 24, "1 dzień");

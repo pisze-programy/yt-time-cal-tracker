@@ -146,6 +146,24 @@
     return !!text && /(temu|ago|yesterday|wczoraj|przed chwil)/i.test(text);
   }
 
+  // Picks the view-count label from a metadata row (array of label strings, DOM order).
+  // Prefers an explicit views keyword; else the numeric label immediately before the age.
+  function rowViewsText(labels) {
+    let views = null;
+    let ageIdx = -1;
+    for (let i = 0; i < labels.length; i++) {
+      if (!views && isViewsLabel(labels[i])) views = labels[i];
+      else if (ageIdx < 0 && isAgeLabel(labels[i])) ageIdx = i;
+    }
+    if (views) return views;
+    if (ageIdx > 0) {
+      for (let i = ageIdx - 1; i >= 0; i--) {
+        if (/\d/.test(labels[i]) && !isAgeLabel(labels[i])) return labels[i];
+      }
+    }
+    return null;
+  }
+
   // Supports both the new view-model markup and the classic ytd-* renderers.
   function extractMetadata(el) {
     let viewsText = null;
@@ -155,14 +173,15 @@
       '[class*="ytContentMetadataViewModelMetadataRow"], [class*="ContentMetadataViewModelMetadataRow"]'
     );
     for (const row of rows) {
-      for (const t of row.querySelectorAll('[class*="MetadataText"]')) {
-        const aria = t.getAttribute("aria-label") || t.textContent || "";
-        if (!viewsText && isViewsLabel(aria)) viewsText = aria;
-        else if (!ageText && isAgeLabel(aria)) ageText = aria;
-      }
+      const labels = Array.from(row.querySelectorAll('[class*="MetadataText"]')).map(
+        (t) => t.getAttribute("aria-label") || t.textContent || ""
+      );
+      const last = row.querySelector('[class*="LastPart"]');
+      const lastLabel = last ? last.getAttribute("aria-label") || last.textContent || "" : null;
+      if (!viewsText) viewsText = rowViewsText(labels);
       if (!ageText) {
-        const last = row.querySelector('[class*="LastPart"]');
-        if (last) ageText = last.getAttribute("aria-label") || last.textContent;
+        ageText =
+          lastLabel && isAgeLabel(lastLabel) ? lastLabel : labels.find(isAgeLabel) || null;
       }
       if (viewsText && ageText) break;
     }
@@ -318,9 +337,9 @@
     if (score < 20) return "Low";
     if (score < 35) return "Weak";
     if (score < 50) return "Average";
-    if (score < 66) return "Good";
-    if (score < 76) return "Strong";
-    if (score < 88) return "Excellent";
+    if (score < 62) return "Good";
+    if (score < 74) return "Strong";
+    if (score < 86) return "Excellent";
     return "Top";
   }
 
@@ -351,9 +370,9 @@
     const sp = REFERENCE.vph;
     const se = REFERENCE.er;
 
-    const zV = clamp((Math.log10(views + 1) - sv.mean) / sv.std, -3, 3);
-    const zP = clamp((Math.log10(vph + 1) - sp.mean) / sp.std, -3, 3);
-    const zE = engagementKnown ? clamp((lb - se.mean) / se.std, -3, 3) : 0;
+    const zV = clamp((Math.log10(views + 1) - sv.mean) / sv.std, -4, 4);
+    const zP = clamp((Math.log10(vph + 1) - sp.mean) / sp.std, -4, 4);
+    const zE = engagementKnown ? clamp((lb - se.mean) / se.std, -4, 4) : 0;
 
     // Velocity weight fades out between 24h and 72h (lifetime average beyond that).
     const ageH = ageHours != null ? ageHours : 0;
@@ -424,6 +443,7 @@
     extractMetadata,
     isViewsLabel,
     isAgeLabel,
+    rowViewsText,
     getRendererData,
     deepFind,
     wilsonLowerBound,

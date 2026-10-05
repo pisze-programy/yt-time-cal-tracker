@@ -91,7 +91,7 @@ established methods:
 3. **Aggregate 0–100** — `core.analyze()` scores each video **only from its own data + age**,
    against a fixed reference (no feed comparison, deterministic):
    ```
-   z = clamp((x − μ)/σ, −3, 3)                    // μ/σ are fixed constants
+   z = clamp((x − μ)/σ, −4, 4)                    // μ/σ are fixed constants
    f = clamp((T − 24) / 48, 0, 1)                 // velocity fades out 24h → 72h
    score = 100 · sigmoid((0.30+0.35·f)·z_V + 0.35·(1−f)·z_VPH + 0.35·z_ER)
    ```
@@ -99,7 +99,7 @@ established methods:
    Verdict (one per video, consumed by badge + filter + watch row): 7 steps —
    `Low` (absolute low-quality policy wins) · `Weak` · `Average` · `Good` · `Strong`
    · `Excellent` · `Top`, plus `Suspicious` (high reach, very low engagement).
-   Bands use fixed score cuts (20/35/50/66/76/88).
+   Bands use fixed score cuts (20/35/50/62/74/86).
 
 Low-quality rule (feeds/sidebar expose no like counts). Fresh videos are not judged
 by velocity, and old videos are judged by total reach because views/hour decays:
