@@ -177,6 +177,12 @@ eq(c.bandForScore(68), "Strong", "band 68 -> Strong");
 eq(c.bandForScore(80), "Excellent", "band 80 -> Excellent");
 eq(c.bandForScore(95), "Top", "band 95 -> Top");
 
+// --- guidance targets are ordered (above-average < high) ---
+const tg = c.targets();
+ok(tg.viewsAbove < tg.viewsHigh, "targets views above < high");
+ok(tg.vphAbove < tg.vphHigh, "targets vph above < high");
+ok(tg.erAbove < tg.erHigh, "targets er above < high");
+
 // --- determinism: analyze is pure and feed-independent ---
 const a1 = c.analyze({ views: 1100000, ageHours: 7 * 30 * 24 });
 const a2 = c.analyze({ views: 1100000, ageHours: 7 * 30 * 24 });

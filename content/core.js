@@ -313,6 +313,20 @@
     return REFERENCE[key];
   }
 
+  // Value at which each component becomes "above average" (z=0.25) or "high" (z=1),
+  // so the UI can say what a video would need to rank higher.
+  function targets() {
+    const at = (mean, std, z) => Math.round(Math.pow(10, mean + z * std) - 1);
+    return {
+      viewsAbove: at(REFERENCE.views.mean, REFERENCE.views.std, 0.25),
+      viewsHigh: at(REFERENCE.views.mean, REFERENCE.views.std, 1),
+      vphAbove: at(REFERENCE.vph.mean, REFERENCE.vph.std, 0.25),
+      vphHigh: at(REFERENCE.vph.mean, REFERENCE.vph.std, 1),
+      erAbove: REFERENCE.er.mean + 0.25 * REFERENCE.er.std,
+      erHigh: REFERENCE.er.mean + REFERENCE.er.std,
+    };
+  }
+
   // Low-quality rule. Feed/sidebar expose no like counts, so engagement is usually unknown.
   // Fresh videos are never judged by velocity; old videos are judged by total reach,
   // because views/hour naturally decays for evergreen content.
@@ -514,6 +528,7 @@
     WEIGHTS,
     REFERENCE,
     baselineOf,
+    targets,
     formatNumber,
     formatAgeHours,
     formatDurationSec,

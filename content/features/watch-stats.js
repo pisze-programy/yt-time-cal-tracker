@@ -188,21 +188,59 @@
       parts.push(`<span class="ytcal-badge ytcal-band-${a.band}" title="${verdictTip}">${a.verdict}</span>`);
       if (!m.engagementKnown) parts.push('<span class="ytcal-muted">reach &amp; velocity only</span>');
 
-      const line = `<span class="ytcal-verdict-line">${this.#verdictLine(a, m, baseVph, baseEr)}</span>`;
-      return parts.join(SEP) + line;
+      return parts.join(SEP) + this.#verdictBlock(a, m);
     }
 
-    // Human-readable explanation that reuses the per-component labels from core.analyze,
-    // so the visible words and the aggregate can never disagree.
-    #verdictLine(a, m, baseVph, baseEr) {
-      const typical = `typical ~${baseVph}/h · ~${(baseEr * 100).toFixed(1)}% ER`;
-      if (!m.engagementKnown) {
-        return `Judged on reach &amp; velocity only — reach <b>${a.labels.reach}</b> · velocity <b>${a.labels.velocity}</b>. Likes/comments unavailable.`;
-      }
+    // Multi-line explanation: verdict + weak spots, per-metric snapshot, what to raise
+    // to rank higher, and a short glossary. All labels come from core.analyze, so the
+    // words can never disagree with the aggregate.
+    #verdictBlock(a, m) {
+      const core = YTCAL.core;
+      const tg = core.targets();
+      const erPct = m.rawRate != null ? (m.rawRate * 100).toFixed(2) : null;
       const scoreTxt =
         a.verdict === "Low" || a.verdict === "Suspicious" ? "" : ` (${Math.round(a.score)}/100)`;
       const why = a.reason ? ` — ${a.reason}` : "";
-      return `${a.verdict}${scoreTxt}${why} · reach <b>${a.labels.reach}</b> · velocity <b>${a.labels.velocity}</b> · engagement <b>${a.labels.engagement}</b> · ${typical}.`;
+      const weakRe = /low|below average/;
+
+      const weak = [];
+      if (weakRe.test(a.labels.reach)) weak.push("reach");
+      if (m.recent && weakRe.test(a.labels.velocity)) weak.push("velocity");
+      if (m.engagementKnown && weakRe.test(a.labels.engagement)) weak.push("engagement");
+
+      const line1 = `${a.verdict}${scoreTxt}${why}${
+        weak.length ? ` · weak: <b>${weak.join(", ")}</b>` : " · no obvious weak spot"
+      }`;
+
+      const snap = [`reach <b>${a.labels.reach}</b> (${core.formatNumber(m.views)})`];
+      if (m.recent) snap.push(`velocity <b>${a.labels.velocity}</b> (${Math.round(m.vph)}/h)`);
+      if (m.engagementKnown) snap.push(`engagement <b>${a.labels.engagement}</b> (${erPct}%)`);
+      const line2 = snap.join(" · ");
+
+      const order = ["Low", "Weak", "Average", "Good", "Strong", "Excellent", "Top"];
+      const idx = order.indexOf(a.verdict);
+      const next = idx >= 0 && idx < order.length - 1 ? order[idx + 1] : null;
+      const targets = [];
+      if (weak.includes("reach")) targets.push(`reach ≥ ${core.formatNumber(tg.viewsAbove)}`);
+      if (weak.includes("velocity")) targets.push(`velocity ≥ ${tg.vphAbove}/h`);
+      if (weak.includes("engagement"))
+        targets.push(`engagement ≥ ${(tg.erAbove * 100).toFixed(1)}%`);
+      const line3 = next
+        ? `To reach <b>${next}</b> raise: ${
+            weak.length ? targets.join(" · ") : "any metric (already balanced)"
+          }. High marks: reach ≥ ${core.formatNumber(tg.viewsHigh)} · velocity ≥ ${tg.vphHigh}/h · engagement ≥ ${(tg.erHigh * 100).toFixed(1)}%.`
+        : `Already the top band. High marks: reach ≥ ${core.formatNumber(tg.viewsHigh)} · velocity ≥ ${tg.vphHigh}/h · engagement ≥ ${(tg.erHigh * 100).toFixed(1)}%.`;
+
+      const line4 =
+        "ER = (likes + comments) / views (share of viewers who react). VPH = views per hour. " +
+        "Labels: low &lt; below average &lt; typical &lt; above average &lt; high.";
+
+      return (
+        `<span class="ytcal-verdict-line">${line1}</span>` +
+        `<span class="ytcal-verdict-line ytcal-muted">${line2}${!m.engagementKnown ? " (likes/comments unavailable)" : ""}</span>` +
+        `<span class="ytcal-verdict-line ytcal-muted">${line3}</span>` +
+        `<span class="ytcal-verdict-line ytcal-muted">${line4}</span>`
+      );
     }
   };
 })();
