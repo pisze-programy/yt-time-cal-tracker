@@ -251,6 +251,87 @@
     return { views, ageHours, durationSec, viewsText, ageText };
   }
 
+  // One pass over the page shared by every feature. `items` holds the outermost,
+  // non-short tiles exactly once; `getMeta` memoizes extractMetadata per element so
+  // badge + filter never parse the same tile twice within a single pass.
+  //
+  // With `visibleOnly` (the default) only tiles near the viewport are included, so a
+  // long feed is not scored item-by-item. Tiles entering view are reported through the
+  // listener registered with setViewportListener (content.js triggers a rescan).
+  const VIEWPORT_MARGIN = "400px 0px";
+  let gate = null;
+  let viewportListener = null;
+
+  function viewportGate() {
+    if (gate !== null) return gate;
+    if (typeof IntersectionObserver !== "function") {
+      gate = false;
+      return gate;
+    }
+    const visible = new WeakSet();
+    const observed = new WeakSet();
+    const io = new IntersectionObserver(
+      (entries) => {
+        let changed = false;
+        for (const e of entries) {
+          if (e.isIntersecting) {
+            if (!visible.has(e.target)) {
+              visible.add(e.target);
+              changed = true;
+            }
+          } else if (visible.delete(e.target)) {
+            changed = true;
+          }
+        }
+        if (changed && typeof viewportListener === "function") viewportListener();
+      },
+      { rootMargin: VIEWPORT_MARGIN }
+    );
+    gate = {
+      ensure(el) {
+        if (!observed.has(el)) {
+          observed.add(el);
+          io.observe(el);
+        }
+      },
+      isVisible(el) {
+        return visible.has(el);
+      },
+    };
+    return gate;
+  }
+
+  function setViewportListener(fn) {
+    viewportListener = fn;
+  }
+
+  function createScanContext({ visibleOnly = true } = {}) {
+    const vp = visibleOnly ? viewportGate() : false;
+    const items = [];
+    for (const el of findItems()) {
+      if (!isOutermost(el) || isShort(el)) continue;
+      if (vp) {
+        vp.ensure(el);
+        if (!vp.isVisible(el)) continue;
+      }
+      items.push(el);
+    }
+    const metaCache = new Map();
+    return {
+      items,
+      visibleOnly: !!vp,
+      hidden: typeof document !== "undefined" && !!document.hidden,
+      getMeta(el) {
+        let m = metaCache.get(el);
+        if (!m) {
+          m = extractMetadata(el);
+          metaCache.set(el, m);
+        }
+        return m;
+      },
+    };
+  }
+
   // Nearest renderer exposing `.data` (Polymer) — the source of menu/feedback tokens.
   function getRendererData(el) {
     for (const c of el.querySelectorAll("*")) {
@@ -513,6 +594,8 @@
     getVideoId,
     isShort,
     extractMetadata,
+    createScanContext,
+    setViewportListener,
     isViewsLabel,
     isAgeLabel,
     rowViewsText,

@@ -10,47 +10,25 @@
   const DISMISS_SVG =
     '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 1C5.925 1 1 5.925 1 12s4.925 11 11 11 11-4.925 11-11S18.075 1 12 1Zm0 2a9 9 0 018.246 12.605L4.755 6.661A8.99 8.99 0 0112 3ZM3.754 8.393l15.491 8.944A9 9 0 013.754 8.393Z"></path></svg>';
 
-  YTCAL.QualityFilterFeature = class {
+  YTCAL.QualityFilterFeature = class extends YTCAL.TileFeature {
     #revealed = new Set();
 
-    get enabled() {
-      return !window.YTCAL_FEATURES || window.YTCAL_FEATURES.qualityFilter !== false;
-    }
-
-    start() {
-      if (!this.enabled) {
-        console.log("[ytcal] qualityFilter disabled");
-        return;
-      }
-      this.scan();
-    }
-
-    onNavigate() {
-      if (this.enabled) this.scan();
-    }
-
-    onMutate() {
-      if (this.enabled) this.scan();
-    }
-
-    scan() {
-      const core = YTCAL.core;
-
-      for (const el of core.findItems()) {
-        if (!core.isOutermost(el)) continue;
-        if (core.isShort(el)) continue;
-
+    #scan = YTCAL.createTileScanner({
+      // Already blurred with actions present -> nothing left to render.
+      shouldSkip: (el) =>
+        el.classList.contains("ytcal-low-quality") && !!el.querySelector(".ytcal-actions"),
+      handle: (el, meta) => {
+        const core = YTCAL.core;
         const id = core.getVideoId(el);
         if (id && this.#revealed.has(id)) el.classList.add("ytcal-revealed");
+        if (meta.views == null) return;
 
-        // Already blurred with actions present -> nothing to do.
-        if (el.classList.contains("ytcal-low-quality") && el.querySelector(".ytcal-actions")) continue;
-
-        const meta = core.extractMetadata(el);
-        if (meta.views == null) continue;
-
-        const a = core.analyze({ views: meta.views, ageHours: meta.ageHours, durationSec: meta.durationSec });
-        if (!a) continue;
+        const a = core.analyze({
+          views: meta.views,
+          ageHours: meta.ageHours,
+          durationSec: meta.durationSec,
+        });
+        if (!a) return;
 
         if (a.verdict === "Low") {
           el.classList.add("ytcal-low-quality");
@@ -64,7 +42,15 @@
         } else {
           el.classList.remove("ytcal-low-quality");
         }
-      }
+      },
+    });
+
+    constructor() {
+      super("qualityFilter");
+    }
+
+    scan(ctx) {
+      this.#scan(ctx);
     }
 
     #renderActions(el, id, meta) {

@@ -4,46 +4,30 @@
 
   const YTCAL = (window.YTCAL = window.YTCAL || {});
 
-  YTCAL.ScoreBadgeFeature = class {
-    get enabled() {
-      return !window.YTCAL_FEATURES || window.YTCAL_FEATURES.scoreBadge !== false;
+  YTCAL.ScoreBadgeFeature = class extends YTCAL.TileFeature {
+    #scan = YTCAL.createTileScanner({
+      // Re-inject if YouTube rebuilt the thumbnail and removed our badge.
+      shouldSkip: (el) => !!el.querySelector(".ytcal-thumb-badge, .ytcal-badge"),
+      handle: (el, meta) => {
+        const t = (window.YTCAL_FEATURES && window.YTCAL_FEATURES.thresholds) || {};
+        const minViews = t.minViewsForScore != null ? t.minViewsForScore : 100;
+        if (meta.views == null || meta.views < minViews) return;
+
+        const a = YTCAL.core.analyze({
+          views: meta.views,
+          ageHours: meta.ageHours,
+          durationSec: meta.durationSec,
+        });
+        if (a) this.#injectBadge(el, a);
+      },
+    });
+
+    constructor() {
+      super("scoreBadge");
     }
 
-    start() {
-      if (!this.enabled) {
-        console.log("[ytcal] scoreBadge disabled");
-        return;
-      }
-      this.scan();
-    }
-
-    onNavigate() {
-      if (this.enabled) this.scan();
-    }
-
-    onMutate() {
-      if (this.enabled) this.scan();
-    }
-
-    scan() {
-      const core = YTCAL.core;
-      const t = (window.YTCAL_FEATURES && window.YTCAL_FEATURES.thresholds) || {};
-      const minViews = t.minViewsForScore != null ? t.minViewsForScore : 100;
-
-      for (const el of core.findItems()) {
-        if (!core.isOutermost(el)) continue;
-        if (core.isShort(el)) continue;
-        // Re-inject if YouTube rebuilt the thumbnail and removed our badge.
-        if (el.querySelector(".ytcal-thumb-badge, .ytcal-badge")) continue;
-
-        const meta = core.extractMetadata(el);
-        if (meta.views == null || meta.views < minViews) continue;
-
-        const a = core.analyze({ views: meta.views, ageHours: meta.ageHours, durationSec: meta.durationSec });
-        if (!a) continue;
-
-        this.#injectBadge(el, a);
-      }
+    scan(ctx) {
+      this.#scan(ctx);
     }
 
     // Thumbnail host for both the new view-model and classic layouts.
