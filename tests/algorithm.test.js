@@ -65,6 +65,13 @@ ok(c.isAgeLabel("1 dzień temu"), "age label PL");
 ok(!c.isAgeLabel("Daniel Dalen"), "channel name is not an age label");
 eq(c.parseLocalizedNumber(""), null, "empty -> null");
 
+// A long digit run (e.g. a garbage page value) must not overflow into a huge float.
+const junkViews =
+  "1 234 567 890 123 456 800 " + Array(42).fill("000").join(" ") + " wyświetleń";
+eq(c.parseLocalizedNumber("123456789012345678901234567890"), null, "absurd count -> null");
+eq(c.extractViews(junkViews), null, "absurd views text -> null");
+eq(c.analyze({ views: 1.2345678901234568e144, ageHours: 1 }), null, "absurd views -> no analysis");
+
 // --- metadata row: views fallback when the aria lacks a views keyword ---
 eq(
   c.rowViewsText(["Daniel Dalen", "Zweryfikowano", "17", "1 dzień temu"]),

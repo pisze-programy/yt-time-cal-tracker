@@ -10,6 +10,12 @@
 
   const clamp = (x, a, b) => Math.max(a, Math.min(b, x));
 
+  // No real video/like/comment count comes anywhere near this. Anything above it is a
+  // parsing artefact (e.g. a long digit run fed to parseFloat), not data — reject it so it
+  // cannot overflow the score (a bogus 1.2e144 views turned into a 3e143 views/hour row).
+  const MAX_COUNT = 1e12;
+  const saneCount = (n) => (Number.isFinite(n) && n >= 0 && n <= MAX_COUNT ? n : null);
+
   function thresholds() {
     return (window.YTCAL_FEATURES && window.YTCAL_FEATURES.thresholds) || {};
   }
@@ -42,13 +48,13 @@
     ];
     for (const [re, mult] of units) {
       const m = s.match(re);
-      if (m) return Math.round(parseFraction(m[1]) * mult);
+      if (m) return saneCount(Math.round(parseFraction(m[1]) * mult));
     }
     // Never silently under-count: if a scale word is present but unmatched, bail out.
     if (/(tys|mln|milion|mld|miliard)/.test(s)) return null;
     const m = s.match(/([\d][\d\s.,]*)/);
     if (!m) return null;
-    return Math.round(parseFraction(m[1]));
+    return saneCount(Math.round(parseFraction(m[1])));
   }
 
   // Parses video age from localized YouTube labels (e.g. "7 godz. temu", "1 day ago").
@@ -486,7 +492,10 @@
 
   // The single source of truth. Pure and deterministic (no baseline side effects).
   function analyze({ views, likes, comments, ageHours, durationSec }) {
-    if (views == null || views <= 0) return null;
+    // Defensive: reject missing/absurd counts. A view count parsed from a long digit string
+    // becomes a float (e.g. 1.2345678901234568e144) that overflows VPH and ER; treat it as
+    // "no data" instead of rendering nonsense. See MAX_COUNT.
+    if (!Number.isFinite(views) || views <= 0 || views > MAX_COUNT) return null;
     const t = thresholds();
     const commentWeight = t.commentWeight != null ? t.commentWeight : 3;
 
@@ -583,6 +592,7 @@
     log,
     warn,
     clamp,
+    MAX_COUNT,
     parseLocalizedNumber,
     parseAgeHours,
     extractViews,
