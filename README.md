@@ -11,6 +11,7 @@ filters/scores low-quality videos in feeds, search results and the sidebar.
 | Quality filter | `qualityFilter` | Blurs low-quality tiles and shows Reveal / Not interested actions. |
 | Score badge | `scoreBadge` | Colored quality badge on video tiles (feed, search, sidebar). |
 | Watch stats | `watchStats` | Views / likes / age / comments + ER, VPH and score on the watch page. |
+| Monetization | `monetization` | Estimated earnings (watch-time anchored) + a SocialBlade link on the watch page. |
 
 All modules default to **ON**, are independent, and are toggled in `feature-flags.js`.
 Scope: home feed, search, sidebar, watch page. Shorts are intentionally out of scope.
@@ -58,6 +59,7 @@ window.YTCAL_FEATURES = {
   qualityFilter: true,
   scoreBadge: true,
   watchStats: true,
+  monetization: true,
   timeTracker: true,
   thresholds: {
     minViewsForScore: 100,
@@ -70,6 +72,27 @@ window.YTCAL_FEATURES = {
     commentWeight: 3,
     priorViews: 30,
     priorHours: 3,
+  },
+
+  // Monetization estimate. CPM in PLN/1000 impressions; country is the detected
+  // viewer market. Full table defaults live in feature-flags.js.
+  revenue: {
+    currency: "PLN",
+    country: "PL",
+    creatorShare: 0.55,
+    adFill: 0.45,
+    midRollGapMin: 8,
+    bandLow: 0.75,
+    bandHigh: 1.35,
+    cpmPlnByCountry: { PL: 30, US: 100, DE: 60, _default: 30 },
+    rpmScale: 1.0,
+    rpmOverride: null,
+    nicheFactor: { default: 1.0, "Science & Technology": 1.4, Education: 1.2,
+                   "News & Politics": 1.1, Gaming: 0.7, Music: 0.5 /* …full set in feature-flags.js */ },
+    retention: { low: { base: 0.35, exponent: -0.25 }, high: { base: 0.75, exponent: -0.18 },
+                 min: 0.05, max: 0.85, floorSec: 20 },
+    retentionByNiche: { default: 1.0, "News & Politics": 1.2, Education: 1.15,
+                        Gaming: 0.85, Music: 1.0 /* …full set in feature-flags.js */ },
   },
 };
 ```
@@ -118,6 +141,50 @@ References: Evan Miller (Wilson), Hacker News `news.arc` gravity, Reddit `_sorts
 arXiv:2403.00454 (likes/comments correlation), arXiv:2410.00289 (NAWP/ECR),
 Pinto et al. WSDM 2013 (early view patterns), vidIQ VPH / Outlier Score.
 
+## Monetization estimate
+
+Foreign videos expose neither average view duration (AVD) nor real revenue — we do not
+know how long anyone actually watches — so the result is always a **range**, never a
+point. Revenue tracks **watch time**, not views: in YouTube Studio, revenue per 1000
+watch hours stays nearly constant across a channel while revenue per 1000 views swings
+3-4x. The model (`core.estimateRevenue`) is therefore anchored on a **range of watch
+times**: a casual scenario and an engaged scenario (both shrinking as videos get longer).
+
+```
+AVD(scenario) = clamp(base * minutes^exponent, ..) × nicheMultiplier × duration
+                scenarios: low = casual, high = engaged; both decay with length
+mid-roll      = floor(AVD_min / 8)  per scenario, for duration ≥ 8 min, else 0
+RPM(scenario) = (1 + mid-roll) × adFill(0.45) × CPM(country) × nicheFactor(category) × 0.55
+range         = [min RPM × bandLow, max RPM × bandHigh] × views / 1000   // 0.75 / 1.35
+central       = geometric mean of the range
+```
+
+- **Watch-time range is the dominant uncertainty.** Casual viewing and an engaged
+  audience (a "good" channel everyone actually watches) can differ ~3–4x in AVD, so the
+  range spans both; a measured AVD from Studio collapses it.
+- `CPM(country)` — advertiser rate in PLN per 1000 impressions (`revenue.cpmPlnByCountry`).
+- `nicheFactor` — CPM multiplier per YouTube category (`…playerMicroformatRenderer.category`,
+  canonical English; all 17 categories are covered, plus Movies/Trailers/Documentary/Shows/Shorts).
+- `retention` — two length-decay curves (`base × minutes^exponent`) × per-category multiplier.
+  A flat fraction would overestimate long videos (a 100-min film is not watched 50% through).
+  `low` ≈ casual, `high` ≈ engaged; both fall as length grows.
+- Country is the **viewer** market (`ytcfg` / topbar). YouTube exposes no per-video
+  country, and CPM depends on the audience's country, which is never public — so it is a
+  stated assumption, not a fact about the channel.
+- **Calibration.** Two knobs in `feature-flags.js → revenue`: `rpmScale` multiplies the
+  prior RPM, and `rpmOverride` (PLN) pins it outright. Set them from a channel you can
+  verify in Studio. Example: a PL long-form news channel ran ~32–37 zł RPM; with the
+  default prior those same videos land in the upper half of the range.
+
+Rate basis (published ranges): Social Blade's calculator uses **$0.25–$4.00 USD RPM**;
+mediacube lists PL CPM **$5–$11**; MilX lists News & Politics CPM **$0.50–$30**.
+
+The watch page shows `💰 ~low–high zł` plus a **SocialBlade ↗** link
+(`socialblade.com/youtube/channel/<id>`) opened in a new tab. Social Blade does have a
+documented JSON API (`matrix.sbapis.com/b`, free only for their own accounts), but it
+carries **no revenue field** and is paid for arbitrary channels, so it is not used here.
+All numbers are overridable in `feature-flags.js → revenue`.
+
 ## "Not interested"
 
 Direct `POST https://www.youtube.com/youtubei/v1/feedback?prettyPrint=false`:
@@ -142,7 +209,9 @@ npm test        # node tests/algorithm.test.js — parser, Wilson bound, thresho
    unblurs, Not interested removes the tile.
 3. Tiles show a `LOW/WEAK/AVG/GOOD/HYPE` badge. A video with thousands of views in
    a few hours must be GOOD/HYPE and must not be blurred.
-4. `/watch`: a stats bar appears under the title with views/likes/age/comments.
+4. `/watch`: a stats bar appears under the title with views/likes/age/comments, a
+   `💰 ~low–high zł` estimate (hover for the breakdown) and a `SocialBlade ↗` link that
+   opens the channel in a new tab.
 5. Console (`[ytcal]`): `feedback: 'not interested' sent` or `-> falling back`.
 6. Calendar: watch more than 3 minutes and verify a calendar entry.
 

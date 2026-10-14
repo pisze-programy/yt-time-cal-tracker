@@ -65,6 +65,13 @@
         this.#el.className = "ytcal-watch-stats";
         this.#html = "";
         this.#el.addEventListener("click", (e) => {
+          const sb = e.target.closest(".ytcal-sb-link");
+          if (sb) {
+            e.preventDefault();
+            e.stopPropagation();
+            window.open(sb.href, "_blank", "noopener");
+            return;
+          }
           if (e.target.closest(".ytcal-expand")) {
             e.preventDefault();
             e.stopPropagation();
@@ -157,7 +164,52 @@
         durationSec,
         likes: this.#readLikes(),
         comments: this.#readComments(),
+        channelId: prMatches && vd.channelId ? vd.channelId : null,
+        category: (mf.category && String(mf.category)) || null,
+        country: this.#readCountry(),
       };
+    }
+
+    // Viewer market (ytcfg / topbar). A weak proxy: YouTube exposes no per-video
+    // country, and CPM depends on the audience's country, which is never public.
+    #readCountry() {
+      try {
+        const cfg = window.ytcfg;
+        const c = cfg && typeof cfg.get === "function" ? cfg.get("COUNTRY") : null;
+        if (c) return String(c).toUpperCase();
+      } catch (_) {}
+      const tb =
+        window.ytInitialData &&
+        window.ytInitialData.topbar &&
+        window.ytInitialData.topbar.desktopTopbarRenderer;
+      return tb && tb.countryCode ? String(tb.countryCode).toUpperCase() : null;
+    }
+
+    #revenue(d) {
+      const F = window.YTCAL_FEATURES || {};
+      if (F.monetization === false) return null;
+      return YTCAL.core.estimateRevenue({
+        views: d.views,
+        durationSec: d.durationSec,
+        category: d.category,
+        country: d.country,
+      });
+    }
+
+    #pln(n) {
+      if (!Number.isFinite(n)) return "—";
+      return Math.round(n).toLocaleString("pl-PL");
+    }
+
+    #revenueTip(r) {
+      const core = YTCAL.core;
+      return (
+        `Estimated revenue ~${this.#pln(r.low)}–${this.#pln(r.high)} ${r.currency} — a RANGE, not a measurement. ` +
+        `How long viewers actually watch is unknown, so watch time spans casual → engaged: ` +
+        `~${this.#pln(r.watchHoursLow)}–${this.#pln(r.watchHoursHigh)} h watch, AVD ` +
+        `~${core.formatDurationSec(r.avdLowSec)}–${core.formatDurationSec(r.avdHighSec)} (${r.avdSource}), ` +
+        `${r.adsPerView}–${r.adsPerViewHigh} ad slots/view, CPM ${r.country} ${r.cpmPln} × niche ${r.nicheFactor}.`
+      );
     }
 
     #readLikes() {
@@ -213,11 +265,19 @@
       if (m.comments != null) row.push(`<span class="ytcal-stat" title="${core.formatNumber(m.comments)} comments">💬 <b>${core.formatNumber(m.comments)}</b></span>`);
       row.push(`<span class="ytcal-stat" title="${velocityTip}">⚡ <b>${Math.round(m.vph)}/h</b></span>`);
       if (erPct != null) row.push(`<span class="ytcal-stat" title="${engagementTip}">❤️ <b>${erPct}%</b></span>`);
+      const rev = this.#revenue(d);
+      if (rev) {
+        row.push(`<span class="ytcal-stat ytcal-money" title="${this.#revenueTip(rev)}">💰 <b>~${this.#pln(rev.low)}–${this.#pln(rev.high)} ${rev.currency}</b></span>`);
+      }
+      if (d.channelId) {
+        const sbHref = `https://socialblade.com/youtube/channel/${d.channelId}`;
+        row.push(`<a class="ytcal-stat ytcal-sb-link" target="_blank" rel="noopener" href="${sbHref}" title="Open this channel on SocialBlade (new tab)">SocialBlade ↗</a>`);
+      }
       row.push(`<span class="ytcal-badge ytcal-band-${a.band}" title="${verdictTip}">${a.verdict}${scoreTxt}</span>`);
 
       // Group 2: one-line verdict headline (visible) + collapsible knowledge.
       const head = this.#verdictHead(a, m);
-      const details = this.#details(a, m, erPct);
+      const details = this.#details(a, m, erPct, rev);
 
       return (
         `<div class="ytcal-row">${row.join(SEP)}</div>` +
@@ -242,7 +302,7 @@
     }
 
     // Collapsible details: snapshot, what to raise, glossary.
-    #details(a, m, erPct) {
+    #details(a, m, erPct, rev) {
       const core = YTCAL.core;
       const tg = core.targets();
       const weakRe = /low|below average/;
@@ -267,7 +327,12 @@
         "ER = (likes + comments) / views (share of viewers who react). VPH = views per hour. " +
         "Labels: low &lt; below average &lt; typical &lt; above average &lt; high.";
 
+      const money = rev
+        ? `<span class="ytcal-verdict-line ytcal-muted">💰 est. ${this.#pln(rev.low)}–${this.#pln(rev.high)} ${rev.currency} · watch ~${core.formatNumber(Math.round(rev.watchHoursLow))}–${core.formatNumber(Math.round(rev.watchHoursHigh))} h · RPM ~${Math.round(rev.rpmLow)}–${Math.round(rev.rpmHigh)} · CPM ${rev.country} ${rev.cpmPln} × niche ${rev.nicheFactor} · ${rev.adsPerView}–${rev.adsPerViewHigh} ad slots/view · AVD ~${core.formatDurationSec(rev.avdLowSec)}–${core.formatDurationSec(rev.avdHighSec)} (${rev.avdSource}) · range = casual→engaged (foreign video)</span>`
+        : "";
+
       return (
+        money +
         `<span class="ytcal-verdict-line ytcal-muted">${snap.join(" · ")}</span>` +
         `<span class="ytcal-verdict-line ytcal-muted">${guidance}</span>` +
         `<span class="ytcal-verdict-line ytcal-muted">${glossary}</span>`

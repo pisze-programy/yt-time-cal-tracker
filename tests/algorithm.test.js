@@ -196,5 +196,113 @@ const a2 = c.analyze({ views: 1100000, ageHours: 7 * 30 * 24 });
 eq(a1.verdict, "Excellent", "1.1M/7mo -> Excellent (not Weak)");
 eq(a1.score, a2.score, "same input -> same score (deterministic)");
 
+// --- monetization estimate (watch-time anchored; always a range) ---
+const R = c.estimateRevenue({ views: 25262, durationSec: 6018, country: "PL" });
+ok(!!R, "estimateRevenue returns a result");
+ok(R.low < R.revenue && R.revenue < R.high, "estimate is a range around the central value");
+ok(Math.abs(R.revenue - Math.sqrt(R.low * R.high)) < 1e-6, "central = geometric mean of the range");
+ok(R.avdLowSec < R.avdHighSec, "watch time is a range (casual < engaged)");
+ok(R.watchHoursHigh > R.watchHoursLow && R.watchHoursLow > 0, "watch hours span the range");
+ok(R.rpmLow <= R.rpm && R.rpm <= R.rpmHigh, "central RPM sits inside the scenario range");
+ok(R.adsPerView <= R.adsPerViewHigh, "ad slots per view are ordered");
+
+const R2 = c.estimateRevenue({ views: 25262, durationSec: 6018, country: "PL" });
+eq(R.revenue, R2.revenue, "estimateRevenue deterministic");
+
+// 8-minute mid-roll eligibility cliff (mid-rolls only exist for videos >= 8 min)
+const under8 = c.estimateRevenue({ views: 100000, durationSec: 479, avgViewDurationSec: 479 });
+const at8 = c.estimateRevenue({ views: 100000, durationSec: 480, avgViewDurationSec: 480 });
+eq(under8.adsPerView, 1, "<8 min: pre-roll only (adsPerView 1)");
+eq(at8.adsPerView, 2, ">=8 min with 8 min AVD: one mid-roll");
+ok(at8.rpm > under8.rpm, "mid-roll raises RPM");
+
+// monotonic in watch time (same views, longer duration/AVD)
+const shortV = c.estimateRevenue({ views: 100000, durationSec: 900, avgViewDurationSec: 600 });
+const longV = c.estimateRevenue({ views: 100000, durationSec: 3600, avgViewDurationSec: 2400 });
+ok(longV.rpm > shortV.rpm, `longer watch time -> higher RPM (${longV.rpm.toFixed(2)} > ${shortV.rpm.toFixed(2)})`);
+
+// measured AVD is more confident than estimated
+const meas = c.estimateRevenue({ views: 100000, durationSec: 1200, avgViewDurationSec: 600 });
+const est = c.estimateRevenue({ views: 100000, durationSec: 1200 });
+eq(meas.avdSource, "measured", "measured AVD tagged");
+eq(est.avdSource, "estimated", "estimated AVD tagged");
+ok(meas.confidence > est.confidence, "measured AVD -> higher confidence");
+
+// niche scales the rate
+const music = c.estimateRevenue({ views: 100000, durationSec: 1200, avgViewDurationSec: 600, category: "Music" });
+const news = c.estimateRevenue({ views: 100000, durationSec: 1200, avgViewDurationSec: 600, category: "News & Politics" });
+ok(music.rpm < news.rpm, "Music RPM < News RPM");
+
+// category tables cover the full YouTube set and stay in sync
+const NICHES = Object.keys(c.REVENUE_DEFAULTS.nicheFactor).filter(
+  (k) => k !== "default" && k !== "Finance" && k !== "Business"
+);
+const RETS = Object.keys(c.REVENUE_DEFAULTS.retentionByNiche).filter((k) => k !== "default");
+ok(NICHES.every((k) => RETS.includes(k)), "every CPM category has a retention entry");
+const YT_CATEGORIES = [
+  "Film & Animation", "Autos & Vehicles", "Music", "Pets & Animals", "Sports",
+  "Short Movies", "Travel & Events", "Gaming", "Videoblogging", "People & Blogs",
+  "Comedy", "Entertainment", "News & Politics", "Howto & Style", "Education",
+  "Science & Technology", "Nonprofits & Activism",
+];
+ok(YT_CATEGORIES.every((k) => NICHES.includes(k)), "all 17 YouTube categories have a CPM factor");
+ok(YT_CATEGORIES.every((k) => RETS.includes(k)), "all 17 YouTube categories have a retention factor");
+
+// category canonicalization (Polish alias -> canonical English)
+eq(c.canonicalCategory("Muzyka"), "Music", "PL alias Muzyka -> Music");
+eq(c.canonicalCategory("Wiadomości i polityka"), "News & Politics", "PL alias news");
+eq(c.canonicalCategory("Music"), "Music", "canonical passthrough");
+eq(c.canonicalCategory("Nieznana"), "Nieznana", "unknown category passthrough");
+eq(c.canonicalCategory(null), null, "null category -> null");
+
+// unknown country falls back to the default CPM
+const zz = c.estimateRevenue({ views: 100000, durationSec: 1200, country: "ZZ" });
+const pl = c.estimateRevenue({ views: 100000, durationSec: 1200, country: "PL" });
+eq(zz.cpmPln, pl.cpmPln, "unknown country -> _default CPM");
+
+// calibration knobs: rpmScale multiplies the prior, rpmOverride pins RPM
+const baseRpm = c.estimateRevenue({ views: 100000, durationSec: 6000 });
+eq(baseRpm.rpmSource, "prior", "default rpmSource = prior");
+window.YTCAL_FEATURES.revenue = { rpmScale: 1.5 };
+const scaled = c.estimateRevenue({ views: 100000, durationSec: 6000 });
+ok(Math.abs(scaled.rpm - baseRpm.rpm * 1.5) < 1e-6, "rpmScale multiplies RPM");
+eq(scaled.rpmSource, "scaled", "rpmSource = scaled");
+window.YTCAL_FEATURES.revenue = { rpmOverride: 35 };
+const pinned = c.estimateRevenue({ views: 100000, durationSec: 6000 });
+eq(pinned.rpm, 35, "rpmOverride pins RPM");
+eq(pinned.rpmSource, "override", "rpmSource = override");
+delete window.YTCAL_FEATURES.revenue;
+
+// invalid inputs -> null
+eq(c.estimateRevenue({ views: 0 }), null, "0 views -> null");
+eq(c.estimateRevenue({ views: -5 }), null, "negative views -> null");
+eq(c.estimateRevenue({ views: 1.2345678901234568e144 }), null, "absurd views -> null");
+eq(c.estimateRevenue({}), null, "missing views -> null");
+
+// retention decays with length: a long video is not watched ~half through
+const long100 = c.estimateRevenue({ views: 70000, durationSec: 6000 }); // 100 min
+ok(long100.avdSec < 0.35 * 6000, `long-video AVD well under half (${Math.round(long100.avdSec / 60)} min)`);
+ok(
+  long100.watchHours < 35000,
+  `70k views on a 100-min video -> < 35k watch hours (${Math.round(long100.watchHours)})`
+);
+const short5 = c.estimateRevenue({ views: 100000, durationSec: 300 });
+const mid20 = c.estimateRevenue({ views: 100000, durationSec: 1200 });
+ok(short5.avdSec / 300 > mid20.avdSec / 1200, "retention % declines with length");
+ok(short5.avdSec >= 20 && mid20.avdSec >= 20, "AVD respects the absolute floor");
+ok(c.estimateRevenue({ views: 100000, durationSec: 6000 }).avdSec <= 6000, "AVD never exceeds duration");
+
+// Screenshot fixture: ~3M-view long news video, AVD ~37 min. The Studio rows in that
+// range report ~82k-118k PLN, so the estimate must land in the same order of magnitude.
+const fixture = c.estimateRevenue({
+  views: 3000000, durationSec: 3600, avgViewDurationSec: 37 * 60,
+  category: "News & Politics", country: "PL",
+});
+ok(
+  fixture.revenue >= 60000 && fixture.revenue <= 130000,
+  `fixture revenue plausible (${Math.round(fixture.revenue)} PLN, want 60k-130k)`
+);
+ok(fixture.rpm >= 25 && fixture.rpm <= 45, `fixture RPM plausible (${fixture.rpm.toFixed(1)}, want 25-45)`);
+
 console.log(`\n${pass} passed, ${fail} failed`);
 process.exit(fail ? 1 : 0);

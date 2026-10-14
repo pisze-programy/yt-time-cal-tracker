@@ -562,6 +562,241 @@
     };
   }
 
+  // ---------------------------------------------------------------- monetization
+
+  // Monetization priors (see README "Monetization estimate"). CPM is the advertiser
+  // rate in PLN per 1000 impressions; nicheFactor scales it per category; retention
+  // estimates average view duration when only the length is known. Ad revenue tracks
+  // watch time (pre-roll + one mid-roll per midRollGapMin minutes) far better than raw
+  // views, so the model is anchored on estimated watch hours. All values are
+  // overridable from window.YTCAL_FEATURES.revenue.
+  const REVENUE_DEFAULTS = Object.freeze({
+    currency: "PLN",
+    country: "PL",
+    creatorShare: 0.55, // creator's share of ad revenue
+    adFill: 0.45, // share of views that generate at least one ad impression (40-60%)
+    midRollGapMin: 8, // mid-roll slots only exist for videos >= 8 minutes
+    bandLow: 0.75, // residual CPM/fill uncertainty applied on top of each watch-time scenario
+    bandHigh: 1.35,
+    rpmScale: 1.0, // multiply the prior RPM (calibration: set ~1.5 for a high-retention PL news channel)
+    rpmOverride: null, // absolute RPM in PLN, pins the estimate (own-channel calibration)
+    cpmPlnByCountry: Object.freeze({
+      PL: 30, CZ: 26, DE: 60, GB: 70, US: 100, UA: 10, IN: 5, _default: 30,
+    }),
+    // CPM multiplier by YouTube category (1.0 = general content). Based on published
+    // CPM-by-niche ranges: finance/business highest, tech/education above average,
+    // music/pets/nonprofits lowest. Finance/Business are kept for manual overrides;
+    // YouTube never emits them as a category string (finance videos land in Howto
+    // & Style / Education / News & Politics).
+    nicheFactor: Object.freeze({
+      default: 1.0,
+      Finance: 2.0,
+      Business: 1.8,
+      "Science & Technology": 1.4,
+      Education: 1.2,
+      "Howto & Style": 1.15,
+      "News & Politics": 1.1,
+      Sports: 1.0,
+      Documentary: 0.9,
+      "Autos & Vehicles": 0.9,
+      "Travel & Events": 0.9,
+      "People & Blogs": 0.85,
+      "Film & Animation": 0.85,
+      Comedy: 0.8,
+      Entertainment: 0.8,
+      Videoblogging: 0.75,
+      Gaming: 0.7,
+      Movies: 0.7,
+      Trailers: 0.6,
+      Shows: 0.6,
+      Music: 0.5,
+      "Pets & Animals": 0.5,
+      "Nonprofits & Activism": 0.5,
+      "Short Movies": 0.6,
+      Shorts: 0.15,
+    }),
+    // How long viewers actually watch a foreign video is unknown, so AVD is a RANGE: a
+    // casual scenario (low) and an engaged scenario (high). Both decay with length (the
+    // percentage viewed falls as videos get longer). A per-niche multiplier and absolute
+    // bounds keep it sane. See retentionByNiche below.
+    retention: Object.freeze({
+      low: Object.freeze({ base: 0.35, exponent: -0.25 }), // casual / poorly retained
+      high: Object.freeze({ base: 0.75, exponent: -0.18 }), // engaged audience
+      min: 0.05,
+      max: 0.85,
+      floorSec: 20,
+    }),
+    // Retention multiplier by category (relative percentage viewed vs. the default).
+    retentionByNiche: Object.freeze({
+      default: 1.0,
+      "News & Politics": 1.2,
+      Education: 1.15,
+      "Howto & Style": 1.15,
+      "Science & Technology": 1.1,
+      Sports: 1.05,
+      Documentary: 1.05,
+      Music: 1.0,
+      "Nonprofits & Activism": 1.0,
+      "Autos & Vehicles": 0.95,
+      "Travel & Events": 0.95,
+      "Pets & Animals": 0.95,
+      Comedy: 0.9,
+      "Film & Animation": 0.9,
+      Movies: 0.9,
+      "Short Movies": 0.9,
+      Shorts: 0.9,
+      Entertainment: 0.85,
+      Gaming: 0.85,
+      Videoblogging: 0.85,
+      "People & Blogs": 0.85,
+      Trailers: 0.8,
+      Shows: 0.8,
+    }),
+  });
+
+  // The player microformat returns canonical English category names (verified: "Music"
+  // even under a Polish UI). These aliases map localized/exact-title names as a safety
+  // net so a lookup never silently falls back to "default".
+  const CATEGORY_ALIASES = Object.freeze({
+    "film i animacja": "Film & Animation",
+    motoryzacja: "Autos & Vehicles",
+    muzyka: "Music",
+    zwierzeta: "Pets & Animals",
+    "zwierzęta": "Pets & Animals",
+    sport: "Sports",
+    "krótkie filmy": "Short Movies",
+    "podróże i wydarzenia": "Travel & Events",
+    gry: "Gaming",
+    wideoblogi: "Videoblogging",
+    "ludzie i blogi": "People & Blogs",
+    komedia: "Comedy",
+    rozrywka: "Entertainment",
+    "wiadomości i polityka": "News & Politics",
+    "instrukcje i styl": "Howto & Style",
+    edukacja: "Education",
+    "nauka i technologia": "Science & Technology",
+    "organizacje non-profit i aktywizm": "Nonprofits & Activism",
+  });
+
+  function canonicalCategory(raw) {
+    if (!raw) return null;
+    const s = String(raw).trim();
+    if (REVENUE_DEFAULTS.nicheFactor[s] != null) return s;
+    return CATEGORY_ALIASES[s.toLowerCase()] || s;
+  }
+
+  function revenueConfig() {
+    const r = (window.YTCAL_FEATURES && window.YTCAL_FEATURES.revenue) || {};
+    const rr = r.retention || {};
+    return {
+      ...REVENUE_DEFAULTS,
+      ...r,
+      cpmPlnByCountry: { ...REVENUE_DEFAULTS.cpmPlnByCountry, ...(r.cpmPlnByCountry || {}) },
+      nicheFactor: { ...REVENUE_DEFAULTS.nicheFactor, ...(r.nicheFactor || {}) },
+      retention: {
+        ...REVENUE_DEFAULTS.retention,
+        ...rr,
+        low: { ...REVENUE_DEFAULTS.retention.low, ...(rr.low || {}) },
+        high: { ...REVENUE_DEFAULTS.retention.high, ...(rr.high || {}) },
+      },
+      retentionByNiche: { ...REVENUE_DEFAULTS.retentionByNiche, ...(r.retentionByNiche || {}) },
+    };
+  }
+
+  // Estimates a video's revenue from public data. There is NO point value: how long
+  // viewers actually watch a foreign video is unknown, so AVD — and therefore watch
+  // time and revenue — comes out as a RANGE between a casual and an engaged audience.
+  // Anchored on watch time because revenue tracks watch hours, not views:
+  //   AVD(scenario) = clamp(base * minutes^exponent, ..) * nicheMultiplier * duration
+  //                   scenarios: low = casual, high = engaged, both decay with length
+  //   mid-rolls     = floor(AVD_min / 8) per scenario, for videos >= 8 min, else 0
+  //   RPM(scenario) = (1 + mid-rolls) * adFill * CPM(country) * nicheFactor * share
+  //   range         = [min RPM * bandLow, max RPM * bandHigh] * views / 1000
+  function estimateRevenue({ views, durationSec, avgViewDurationSec, category, country } = {}) {
+    if (!Number.isFinite(views) || views <= 0 || views > MAX_COUNT) return null;
+    const c = revenueConfig();
+    const cat = canonicalCategory(category);
+
+    const ctry = String(country || c.country || "").toUpperCase();
+    const cpm = c.cpmPlnByCountry[ctry] != null ? c.cpmPlnByCountry[ctry] : c.cpmPlnByCountry._default;
+    const nf = c.nicheFactor[cat] != null ? c.nicheFactor[cat] : c.nicheFactor.default;
+    const nb = c.retentionByNiche[cat] != null ? c.retentionByNiche[cat] : c.retentionByNiche.default;
+    const floorSec = c.retention.floorSec != null ? c.retention.floorSec : 20;
+    const hasDuration = Number.isFinite(durationSec) && durationSec > 0;
+
+    const retentionAt = (scenario) => {
+      const dMin = durationSec / 60;
+      const r = clamp(scenario.base * Math.pow(dMin, scenario.exponent) * nb, c.retention.min, c.retention.max);
+      return r * durationSec;
+    };
+    const clampAvd = (s) => (hasDuration ? clamp(s, floorSec, durationSec) : Math.max(s, floorSec));
+
+    // A measured AVD (from Studio) collapses the range to the residual CPM band only.
+    let avdLowSec;
+    let avdHighSec;
+    let avdSource;
+    if (Number.isFinite(avgViewDurationSec) && avgViewDurationSec > 0) {
+      avdLowSec = avdHighSec = clampAvd(avgViewDurationSec);
+      avdSource = "measured";
+    } else if (hasDuration) {
+      avdLowSec = clampAvd(retentionAt(c.retention.low));
+      avdHighSec = clampAvd(retentionAt(c.retention.high));
+      avdSource = "estimated";
+    } else {
+      avdLowSec = avdHighSec = 180; // 3 min fallback when even the length is unknown
+      avdSource = "fallback";
+    }
+
+    const rpmFor = (avdSec) => {
+      const avdMin = avdSec / 60;
+      const eligible = hasDuration && durationSec >= c.midRollGapMin * 60;
+      const mid = eligible ? clamp(Math.floor(avdMin / c.midRollGapMin), 0, 8) : 0;
+      const adsPerView = 1 + mid;
+      let rpm = adsPerView * c.adFill * cpm * nf * c.creatorShare;
+      let source = "prior";
+      if (Number.isFinite(c.rpmOverride) && c.rpmOverride > 0) {
+        rpm = c.rpmOverride;
+        source = "override";
+      } else if (Number.isFinite(c.rpmScale) && c.rpmScale > 0 && c.rpmScale !== 1) {
+        rpm *= c.rpmScale;
+        source = "scaled";
+      }
+      return { rpm, adsPerView, source };
+    };
+
+    const lo = rpmFor(avdLowSec);
+    const hi = rpmFor(avdHighSec);
+    const low = (views / 1000) * lo.rpm * c.bandLow;
+    const high = (views / 1000) * hi.rpm * c.bandHigh;
+    const revenue = Math.sqrt(Math.max(0, low * high)); // central estimate (geometric mean)
+    const rpm = Math.sqrt(lo.rpm * hi.rpm);
+
+    return {
+      currency: c.currency,
+      country: ctry,
+      category: cat,
+      avdSec: avdLowSec, // primary (conservative) AVD, kept for compatibility
+      avdLowSec,
+      avdHighSec,
+      avdSource,
+      adsPerView: lo.adsPerView,
+      adsPerViewHigh: hi.adsPerView,
+      watchHours: (views * avdLowSec) / 3600,
+      watchHoursLow: (views * avdLowSec) / 3600,
+      watchHoursHigh: (views * avdHighSec) / 3600,
+      rpm,
+      rpmLow: lo.rpm,
+      rpmHigh: hi.rpm,
+      rpmSource: lo.source,
+      revenue,
+      low,
+      high,
+      confidence: avdSource === "measured" ? 0.9 : avdSource === "estimated" ? 0.5 : 0.3,
+      cpmPln: cpm,
+      nicheFactor: nf,
+    };
+  }
+
   function formatNumber(n) {
     if (n == null || !Number.isFinite(n)) return "—";
     return Number(n).toLocaleString("en-US");
@@ -615,6 +850,10 @@
     smoothedVph,
     isLowQuality,
     analyze,
+    estimateRevenue,
+    revenueConfig,
+    canonicalCategory,
+    REVENUE_DEFAULTS,
     bandForScore,
     componentLabel,
     scoreFromZ,
