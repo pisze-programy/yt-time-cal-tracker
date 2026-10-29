@@ -23,6 +23,11 @@ html.ytcal-idle .ytcal-overlay {
   -webkit-backdrop-filter: none;
 }
 
+/* Idle hides the blur — the label goes with it, otherwise it floats alone. */
+html.ytcal-idle .ytcal-label {
+  display: none;
+}
+
 .ytcal-low-quality.ytcal-revealed .ytcal-overlay {
   display: none !important;
 }
@@ -108,6 +113,33 @@ html.ytcal-idle .ytcal-overlay {
 .ytcal-band-excellent { background: #1565c0; }
 .ytcal-band-top { background: #6a1b9a; }
 .ytcal-band-suspicious { background: #b36b00; }
+
+/* Verdict filter bar — second row inside the sticky home chip bar. */
+.ytcal-filter-bar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  width: 100%;
+  flex-basis: 100%;
+  box-sizing: border-box;
+  padding: 8px 24px 12px;
+  background: var(--yt-spec-base-background, #0f0f0f);
+}
+
+.ytcal-filter-chip {
+  border: none;
+  border-radius: 8px;
+  padding: 6px 12px;
+  font: 500 14px/1.4 Roboto, Arial, sans-serif;
+  color: #fff;
+  cursor: pointer;
+}
+
+/* Switched OFF = this verdict is blurred. */
+.ytcal-filter-chip[aria-pressed="false"] {
+  opacity: 0.35;
+  filter: grayscale(0.6);
+}
 
 /* Badge as a thumbnail overlay — top edge, right margin 8px, native badge shape. */
 .ytcal-thumb-badge {

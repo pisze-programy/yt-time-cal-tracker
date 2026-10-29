@@ -11,6 +11,10 @@ window.YTCAL_FEATURES = {
   monetization: true,
   // Tracks watch time and syncs it to Google Calendar.
   timeTracker: true,
+  // Second-row verdict chips under the home chip bar. Each chip toggles blur for
+  // one verdict; verdicts listed here start switched OFF (blurred).
+  verdictFilter: true,
+  verdictHiddenByDefault: ["Low"],
 
   // Scoring thresholds (see core.js -> analyze / isLowQuality).
   thresholds: {

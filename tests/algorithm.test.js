@@ -304,5 +304,19 @@ ok(
 );
 ok(fixture.rpm >= 25 && fixture.rpm <= 45, `fixture RPM plausible (${fixture.rpm.toFixed(1)}, want 25-45)`);
 
+// --- verdict filter chips (quality-filter.js pure predicate) ---
+window.YTCAL.TileFeature = window.YTCAL.TileFeature || class {};
+window.YTCAL.createTileScanner = window.YTCAL.createTileScanner || (() => () => {});
+eval(fs.readFileSync(path.join(__dirname, "..", "content", "features", "quality-filter.js"), "utf8"));
+eq(window.YTCAL.VERDICT_CHIPS.length, 8, "8 verdict chips");
+ok(
+  window.YTCAL.VERDICT_CHIPS.includes("Low") && window.YTCAL.VERDICT_CHIPS.includes("Top"),
+  "chips include Low + Top"
+);
+ok(window.YTCAL.verdictShouldBlur("Low", ["Low"]), "Low hidden -> blur");
+ok(!window.YTCAL.verdictShouldBlur("Good", ["Low"]), "Good visible -> no blur");
+ok(!window.YTCAL.verdictShouldBlur("Low", []), "empty hidden -> no blur");
+ok(!window.YTCAL.verdictShouldBlur("Low", null), "null hidden -> no blur");
+
 console.log(`\n${pass} passed, ${fail} failed`);
 process.exit(fail ? 1 : 0);
