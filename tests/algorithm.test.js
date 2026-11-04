@@ -304,9 +304,8 @@ ok(
 );
 ok(fixture.rpm >= 25 && fixture.rpm <= 45, `fixture RPM plausible (${fixture.rpm.toFixed(1)}, want 25-45)`);
 
-// --- verdict filter chips (quality-filter.js pure predicate) ---
-window.YTCAL.TileFeature = window.YTCAL.TileFeature || class {};
-window.YTCAL.createTileScanner = window.YTCAL.createTileScanner || (() => () => {});
+// --- verdict filter chips + tile scanner DOM-recycling & re-injection ---
+eval(fs.readFileSync(path.join(__dirname, "..", "content", "tile-scanner.js"), "utf8"));
 eval(fs.readFileSync(path.join(__dirname, "..", "content", "features", "quality-filter.js"), "utf8"));
 eq(window.YTCAL.VERDICT_CHIPS.length, 8, "8 verdict chips");
 ok(
@@ -317,6 +316,46 @@ ok(window.YTCAL.verdictShouldBlur("Low", ["Low"]), "Low hidden -> blur");
 ok(!window.YTCAL.verdictShouldBlur("Good", ["Low"]), "Good visible -> no blur");
 ok(!window.YTCAL.verdictShouldBlur("Low", []), "empty hidden -> no blur");
 ok(!window.YTCAL.verdictShouldBlur("Low", null), "null hidden -> no blur");
+
+// Verify createTileScanner handles DOM recycling (videoId change) and wiped inner DOM
+{
+  let currentId = "vid_A";
+  let hasInjectedNode = false;
+  let handleCalls = 0;
+  const fakeTile = {
+    getAttribute: (k) => (k === "video-id" ? currentId : null),
+    querySelector: () => null,
+  };
+  const fakeCtx = {
+    items: [fakeTile],
+    getMeta: () => ({ views: 5000, ageHours: 10, durationSec: 300 }),
+  };
+  const scan = window.YTCAL.createTileScanner({
+    rescanMs: 30000,
+    retryMs: 500,
+    shouldSkip: () => hasInjectedNode,
+    handle: () => {
+      handleCalls++;
+      hasInjectedNode = true;
+    },
+  });
+
+  scan(fakeCtx);
+  eq(handleCalls, 1, "scanner: initial pass runs handle");
+
+  scan(fakeCtx);
+  eq(handleCalls, 1, "scanner: throttled when same videoId and intact");
+
+  // Simulate YouTube wiping inner DOM (e.g. rebuilding thumbnail/overlay)
+  hasInjectedNode = false;
+  scan(fakeCtx);
+  eq(handleCalls, 2, "scanner: re-runs immediately when rendered DOM is wiped");
+
+  // Simulate YouTube recycling the same DOM element for a different video
+  currentId = "vid_B";
+  scan(fakeCtx);
+  eq(handleCalls, 3, "scanner: re-runs immediately when videoId changes on recycled tile");
+}
 
 console.log(`\n${pass} passed, ${fail} failed`);
 process.exit(fail ? 1 : 0);

@@ -17,18 +17,26 @@
 }
 
 /* Idle = hidden tab or unfocused window: nothing is on screen, so skip the expensive
-   backdrop-filter (the cheap dim background stays, so tiles never become readable). */
+   backdrop-filter. Actions + label hide with the blur and blurred tiles dim
+   further; everything returns with the focus. */
 html.ytcal-idle .ytcal-overlay {
   backdrop-filter: none;
   -webkit-backdrop-filter: none;
 }
 
-/* Idle hides the blur — the label goes with it, otherwise it floats alone. */
-html.ytcal-idle .ytcal-label {
+html.ytcal-idle .ytcal-label,
+html.ytcal-idle .ytcal-actions {
   display: none;
 }
 
-.ytcal-low-quality.ytcal-revealed .ytcal-overlay {
+html.ytcal-idle .ytcal-low-quality {
+  opacity: 0.2;
+}
+
+.ytcal-low-quality.ytcal-revealed .ytcal-overlay,
+:not(.ytcal-low-quality) > .ytcal-overlay,
+:not(.ytcal-low-quality) > .ytcal-actions,
+:not(.ytcal-low-quality) > .ytcal-label {
   display: none !important;
 }
 
@@ -114,31 +122,72 @@ html.ytcal-idle .ytcal-label {
 .ytcal-band-top { background: #6a1b9a; }
 .ytcal-band-suspicious { background: #b36b00; }
 
-/* Verdict filter bar — second row inside the sticky home chip bar. */
+/* Verdict filter bar — unified floating bottom dock with a blurred,
+   semi-transparent background. Always visible across YouTube, hidden in fullscreen. */
 .ytcal-filter-bar {
+  position: fixed;
+  bottom: 14px;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 2100;
   display: flex;
-  flex-wrap: wrap;
-  gap: 8px;
-  width: 100%;
-  flex-basis: 100%;
+  flex-wrap: nowrap;
+  align-items: center;
+  gap: 6px;
   box-sizing: border-box;
-  padding: 8px 24px 12px;
-  background: var(--yt-spec-base-background, #0f0f0f);
+  max-width: calc(100vw - 24px);
+  overflow-x: auto;
+  scrollbar-width: none;
+  margin: 0;
+  padding: 6px 10px;
+  border-radius: 999px;
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  background: rgba(15, 15, 15, 0.65);
+  backdrop-filter: blur(16px) saturate(1.4);
+  -webkit-backdrop-filter: blur(16px) saturate(1.4);
+  box-shadow: 0 6px 24px rgba(0, 0, 0, 0.45);
+}
+
+.ytcal-filter-bar::-webkit-scrollbar {
+  display: none;
+}
+
+.ytcal-filter-bar[hidden],
+:fullscreen .ytcal-filter-bar,
+:-webkit-full-screen .ytcal-filter-bar,
+ytd-app[fullscreen] ~ .ytcal-filter-bar,
+html:has(ytd-watch-flexy[fullscreen]) .ytcal-filter-bar,
+html:has(ytd-app[fullscreen]) .ytcal-filter-bar {
+  display: none !important;
+}
+
+html.ytcal-idle .ytcal-filter-bar {
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
+  background: rgba(15, 15, 15, 0.9);
 }
 
 .ytcal-filter-chip {
+  flex: 0 0 auto;
   border: none;
-  border-radius: 8px;
-  padding: 6px 12px;
-  font: 500 14px/1.4 Roboto, Arial, sans-serif;
+  border-radius: 999px;
+  padding: 5px 12px;
+  font: 600 12px/1.3 Roboto, Arial, sans-serif;
+  letter-spacing: 0.2px;
   color: #fff;
   cursor: pointer;
+  white-space: nowrap;
+  transition: opacity 0.15s ease, transform 0.12s ease, filter 0.15s ease;
+}
+
+.ytcal-filter-chip:hover {
+  transform: translateY(-1px);
 }
 
 /* Switched OFF = this verdict is blurred. */
 .ytcal-filter-chip[aria-pressed="false"] {
   opacity: 0.35;
-  filter: grayscale(0.6);
+  filter: grayscale(0.65);
 }
 
 /* Badge as a thumbnail overlay — top edge, right margin 8px, native badge shape. */

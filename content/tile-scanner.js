@@ -26,14 +26,19 @@
       ctx = ctx || core.createScanContext();
       const now = Date.now();
       for (const el of ctx.items) {
-        if (shouldSkip && shouldSkip(el)) continue;
-
+        const videoId = core && typeof core.getVideoId === "function" ? core.getVideoId(el) : null;
         const prev = seen.get(el);
-        if (prev && now - prev.at < (prev.settled ? rescan : retry)) continue;
+        const sameVideo = Boolean(prev && prev.videoId === videoId);
+        const intact = Boolean(shouldSkip && shouldSkip(el));
+
+        if (sameVideo && prev && (!prev.rendered || intact)) {
+          if (now - prev.at < (prev.settled ? rescan : retry)) continue;
+        }
 
         const meta = ctx.getMeta(el);
-        seen.set(el, { at: now, settled: meta.views != null });
         if (handle) handle(el, meta, ctx);
+        const rendered = Boolean(shouldSkip && shouldSkip(el));
+        seen.set(el, { at: now, settled: meta.views != null, videoId, rendered });
       }
     };
   }

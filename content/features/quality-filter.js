@@ -1,6 +1,7 @@
 // quality-filter.js — blurs tiles whose verdict is filtered out and provides reveal/dismiss actions.
 // Uses the same core.analyze verdict as the badge, so blur and badge can never disagree.
-// The second-row chip bar (home feed only) toggles blur per verdict; default blurs Low.
+// The floating bottom chip bar (always visible across YouTube, hidden in fullscreen)
+// toggles blur per verdict; default blurs Low.
 (function () {
   "use strict";
 
@@ -65,6 +66,7 @@
     #revealed = new Set();
     #hidden = new Set(loadHidden());
     #bar = null;
+    #listenersBound = false;
 
     #isHidden(verdict) {
       if (!verdictFilterOn()) return verdict === "Low";
@@ -72,35 +74,11 @@
     }
 
     #scan = YTCAL.createTileScanner({
-      // Already blurred with actions present -> nothing left to render.
+      // Intact check: when blurred, the overlay and action buttons must be present.
       shouldSkip: (el) =>
         el.classList.contains("ytcal-low-quality") && !!el.querySelector(".ytcal-actions"),
       handle: (el, meta) => {
-        const core = YTCAL.core;
-        const id = core.getVideoId(el);
-        if (id && this.#revealed.has(id)) el.classList.add("ytcal-revealed");
-        if (meta.views == null) return;
-
-        const a = core.analyze({
-          views: meta.views,
-          ageHours: meta.ageHours,
-          durationSec: meta.durationSec,
-        });
-        if (!a) return;
-        el.dataset.ytcalVerdict = a.verdict;
-
-        if (this.#isHidden(a.verdict)) {
-          el.classList.add("ytcal-low-quality");
-          const label = el.querySelector(".ytcal-label");
-          if (el.querySelector(".ytcal-actions")) {
-            // keep the label in sync as YouTube fills in views/age late
-            if (label) label.textContent = this.#labelText(meta, a.verdict);
-          } else {
-            this.#renderActions(el, id, meta, a.verdict);
-          }
-        } else {
-          el.classList.remove("ytcal-low-quality");
-        }
+        this.#applyToTile(el, meta);
       },
     });
 
@@ -113,27 +91,40 @@
       this.#ensureBar();
     }
 
-    // --- verdict chip bar: a second row under the home feed chip bar ---
+    // --- unified floating bottom verdict chip bar ---
 
-    #isHome() {
-      return window.location.pathname === "/";
+    #isFullscreen() {
+      return Boolean(
+        document.fullscreenElement ||
+          document.webkitFullscreenElement ||
+          document.querySelector(
+            "ytd-watch-flexy[fullscreen], ytd-app[fullscreen], .html5-video-player.ytp-fullscreen"
+          )
+      );
+    }
+
+    #syncFullscreen() {
+      if (!this.#bar) return;
+      this.#bar.hidden = this.#isFullscreen();
     }
 
     #ensureBar() {
-      const show = this.enabled && verdictFilterOn() && this.#isHome();
+      const show = this.enabled && verdictFilterOn();
       const existing = document.querySelector(".ytcal-filter-bar");
       if (!show) {
         if (existing) existing.remove();
         this.#bar = null;
         return;
       }
+      if (!document.body) return;
+
       if (existing) {
         this.#bar = existing;
         this.#syncBar();
+        this.#syncFullscreen();
         return;
       }
-      const anchor = document.querySelector("ytd-feed-filter-chip-bar-renderer");
-      if (!anchor) return;
+
       const bar = document.createElement("div");
       bar.className = "ytcal-filter-bar";
       bar.setAttribute("role", "toolbar");
@@ -152,10 +143,24 @@
         });
         bar.appendChild(b);
       }
-      // Inside the renderer, not next to it: the renderer is the sticky element,
-      // so a sibling scrolls away with the page.
-      anchor.appendChild(bar);
+
+      document.body.appendChild(bar);
       this.#bar = bar;
+      this.#syncFullscreen();
+
+      if (!this.#listenersBound) {
+        this.#listenersBound = true;
+        const onFs = () => this.#syncFullscreen();
+        document.addEventListener("fullscreenchange", onFs);
+        document.addEventListener("webkitfullscreenchange", onFs);
+        window.addEventListener("storage", (e) => {
+          if (e.key === STORE_KEY) {
+            this.#hidden = new Set(loadHidden());
+            this.#syncBar();
+            this.#applyToAll();
+          }
+        });
+      }
     }
 
     #syncBar() {
@@ -173,40 +178,68 @@
       this.#applyToAll();
     }
 
+    #clearBlur(el) {
+      el.classList.remove("ytcal-low-quality");
+      const overlay = el.querySelector(".ytcal-overlay");
+      if (overlay) overlay.remove();
+      const actions = el.querySelector(".ytcal-actions");
+      if (actions) actions.remove();
+      const label = el.querySelector(".ytcal-label");
+      if (label) label.remove();
+    }
+
+    #applyToTile(el, meta) {
+      const core = YTCAL.core;
+      const id = core.getVideoId(el);
+
+      // If YouTube recycled a previously dismissed tile node for a new video, unhide it.
+      if (el.dataset.ytcalDismissedId && el.dataset.ytcalDismissedId !== (id || "")) {
+        delete el.dataset.ytcalDismissedId;
+        if (el.style.display === "none") el.style.display = "";
+      }
+
+      el.classList.toggle("ytcal-revealed", Boolean(id && this.#revealed.has(id)));
+
+      if (meta.views == null) {
+        this.#clearBlur(el);
+        return;
+      }
+
+      const a = core.analyze({
+        views: meta.views,
+        ageHours: meta.ageHours,
+        durationSec: meta.durationSec,
+      });
+      if (!a) {
+        this.#clearBlur(el);
+        return;
+      }
+      el.dataset.ytcalVerdict = a.verdict;
+
+      if (this.#isHidden(a.verdict)) {
+        el.classList.add("ytcal-low-quality");
+        const label = el.querySelector(".ytcal-label");
+        if (el.querySelector(".ytcal-actions")) {
+          if (label) label.textContent = this.#labelText(meta, a.verdict);
+        } else {
+          this.#renderActions(el, meta, a.verdict);
+        }
+      } else {
+        this.#clearBlur(el);
+      }
+    }
+
     // Bypass the scanner throttle: a chip toggle applies immediately to every tile.
     #applyToAll() {
       const core = YTCAL.core;
       for (const el of core.findItems()) {
         if (!core.isOutermost(el) || core.isShort(el)) continue;
         const meta = core.extractMetadata(el);
-        if (meta.views == null) continue;
-        const a = core.analyze({
-          views: meta.views,
-          ageHours: meta.ageHours,
-          durationSec: meta.durationSec,
-        });
-        if (!a) continue;
-        el.dataset.ytcalVerdict = a.verdict;
-        const id = core.getVideoId(el);
-        if (this.#isHidden(a.verdict)) {
-          el.classList.add("ytcal-low-quality");
-          if (id && this.#revealed.has(id)) el.classList.add("ytcal-revealed");
-          const label = el.querySelector(".ytcal-label");
-          if (label) label.textContent = this.#labelText(meta, a.verdict);
-          else this.#renderActions(el, id, meta, a.verdict);
-        } else {
-          el.classList.remove("ytcal-low-quality");
-          const overlay = el.querySelector(".ytcal-overlay");
-          if (overlay) overlay.remove();
-          const actions = el.querySelector(".ytcal-actions");
-          if (actions) actions.remove();
-          const label = el.querySelector(".ytcal-label");
-          if (label) label.remove();
-        }
+        this.#applyToTile(el, meta);
       }
     }
 
-    #renderActions(el, id, meta, verdict) {
+    #renderActions(el, meta, verdict) {
       if (el.querySelector(".ytcal-actions")) return;
 
       const overlay = document.createElement("div");
@@ -214,7 +247,7 @@
       overlay.addEventListener("click", (e) => {
         e.preventDefault();
         e.stopPropagation();
-        this.#reveal(el, id);
+        this.#reveal(el, YTCAL.core.getVideoId(el));
       });
 
       const actions = document.createElement("div");
@@ -226,12 +259,12 @@
       actions.querySelector(".ytcal-reveal").addEventListener("click", (e) => {
         e.preventDefault();
         e.stopPropagation();
-        this.#reveal(el, id);
+        this.#reveal(el, YTCAL.core.getVideoId(el));
       });
       actions.querySelector(".ytcal-dismiss").addEventListener("click", (e) => {
         e.preventDefault();
         e.stopPropagation();
-        this.#dismiss(el, id, e.currentTarget);
+        this.#dismiss(el, YTCAL.core.getVideoId(el), e.currentTarget);
       });
 
       const label = document.createElement("div");
@@ -260,6 +293,7 @@
       } catch (err) {
         YTCAL.core.warn("dismiss failed", err);
       }
+      el.dataset.ytcalDismissedId = id || "__unknown__";
       el.style.display = "none";
       if (id) this.#revealed.delete(id);
     }

@@ -11,7 +11,10 @@
       handle: (el, meta) => {
         const t = (window.YTCAL_FEATURES && window.YTCAL_FEATURES.thresholds) || {};
         const minViews = t.minViewsForScore != null ? t.minViewsForScore : 100;
-        if (meta.views == null || meta.views < minViews) return;
+        if (meta.views == null || meta.views < minViews) {
+          this.#clearBadge(el);
+          return;
+        }
 
         const a = YTCAL.core.analyze({
           views: meta.views,
@@ -19,6 +22,7 @@
           durationSec: meta.durationSec,
         });
         if (a) this.#injectBadge(el, a);
+        else this.#clearBadge(el);
       },
     });
 
@@ -28,6 +32,12 @@
 
     scan(ctx) {
       this.#scan(ctx);
+    }
+
+    #clearBadge(el) {
+      for (const n of el.querySelectorAll(".ytcal-thumb-badge, .ytcal-badge")) {
+        n.remove();
+      }
     }
 
     // Thumbnail host for both the new view-model and classic layouts.
@@ -52,16 +62,24 @@
     }
 
     #injectBadge(el, a) {
-      const badge = document.createElement("span");
-      badge.className =
+      const cls =
         `ytcal-badge ytcal-band-${a.band}` + (a.metrics.engagementKnown ? "" : " ytcal-no-engagement");
-      badge.textContent = a.verdict;
-      badge.title = this.#tooltip(a);
+      const title = this.#tooltip(a);
 
       // Preferred: overlay badge on the thumbnail, top-right (margin 8px), clear of the native "Nowość".
       const thumb = this.#findThumbnail(el);
       if (thumb) {
-        if (thumb.querySelector(".ytcal-thumb-badge")) return true;
+        const existing = thumb.querySelector(".ytcal-thumb-badge .ytcal-badge");
+        if (existing) {
+          existing.className = cls;
+          existing.textContent = a.verdict;
+          existing.title = title;
+          return true;
+        }
+        const badge = document.createElement("span");
+        badge.className = cls;
+        badge.textContent = a.verdict;
+        badge.title = title;
         const wrap = document.createElement("yt-thumbnail-overlay-badge-view-model");
         wrap.className =
           "ytcal-thumb-badge ytThumbnailOverlayBadgeViewModelHost ytThumbnailOverlayBadgeViewModelLarge";
@@ -73,7 +91,17 @@
       // Fallback for layouts without a thumbnail element: metadata row.
       const target = el.querySelector('[class*="MetadataRow"]') || el.querySelector("#metadata-line");
       if (!target) return false;
-      if (target.querySelector(".ytcal-badge")) return true;
+      const existing = target.querySelector(".ytcal-badge");
+      if (existing) {
+        existing.className = cls;
+        existing.textContent = a.verdict;
+        existing.title = title;
+        return true;
+      }
+      const badge = document.createElement("span");
+      badge.className = cls;
+      badge.textContent = a.verdict;
+      badge.title = title;
       target.appendChild(badge);
       return true;
     }
