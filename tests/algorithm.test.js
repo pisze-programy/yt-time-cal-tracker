@@ -167,6 +167,23 @@ ok(D.verdict !== "Strong", "D never Strong");
 eq(c.analyze({ views: 466, ageHours: 11 }).verdict, "Low", "E verdict Low");
 eq(c.analyze({ views: 120, ageHours: 720 }).verdict, "Low", "F verdict Low");
 
+// Partial engagement: hidden likes + visible comments must NOT falsely trigger Low/Suspicious
+const hiddenLikes = c.analyze({ views: 50000, likes: null, comments: 120, ageHours: 24 });
+eq(hiddenLikes.metrics.engagementKnown, false, "comments without likes -> engagementKnown false");
+ok(
+  hiddenLikes.verdict !== "Low" && hiddenLikes.verdict !== "Suspicious",
+  `hidden likes not penalized (${hiddenLikes.verdict})`
+);
+
+// Long-form duration boost in low-quality rule and smooth 24h-48h transition
+const longPodcast = c.analyze({ views: 900, ageHours: 10, durationSec: 90 * 60 });
+ok(longPodcast.verdict !== "Low", `90-min podcast with 900 views/10h is not Low (${longPodcast.verdict})`);
+ok(!c.isLowQuality({ views: 3500, ageHours: 46 }, T), "3500 views at 46h not killed by 48h cliff");
+ok(
+  typeof A.subscores === "object" && A.subscores.reach > 50 && A.subscores.engagement > 50,
+  "analyze exposes 0-100 subscores"
+);
+
 // Monotonicity: a component labeled "high" must raise the aggregate.
 const hiEng = c.analyze({ views: 9500, likes: 347, comments: 69, ageHours: 120 });
 const loEng = c.analyze({ views: 9500, likes: 5, comments: 0, ageHours: 120 });
@@ -259,6 +276,48 @@ eq(c.canonicalCategory(null), null, "null category -> null");
 const zz = c.estimateRevenue({ views: 100000, durationSec: 1200, country: "ZZ" });
 const pl = c.estimateRevenue({ views: 100000, durationSec: 1200, country: "PL" });
 eq(zz.cpmPln, pl.cpmPln, "unknown country -> _default CPM");
+
+// detectVideoMarket: language / geo detection for non-PL videos
+eq(
+  c.detectVideoMarket({ asrLang: "en", title: "How to Build a Startup in 2026" }).country,
+  "US",
+  "ASR en -> US market"
+);
+eq(
+  c.detectVideoMarket({ defaultLanguage: "en-GB", title: "Review" }).country,
+  "GB",
+  "explicit en-GB -> GB market"
+);
+eq(
+  c.detectVideoMarket({ asrLang: "en", title: "Best Budget Cars in the UK (£5,000)" }).country,
+  "GB",
+  "ASR en + UK/£ cue -> GB market"
+);
+eq(
+  c.detectVideoMarket({ audioLang: "de.4", title: "Testbericht" }).country,
+  "DE",
+  "audioTrack de.4 -> DE market"
+);
+eq(
+  c.detectVideoMarket({ title: "Jak zacząć programować i czy warto się uczyć?" }).country,
+  "PL",
+  "Polish title heuristic -> PL market"
+);
+eq(
+  c.detectVideoMarket({ title: "Why This New CPU Changes Everything for Gamers" }).country,
+  "US",
+  "English title heuristic -> US market"
+);
+eq(
+  c.detectVideoMarket({ title: "Як працює нова система в Україні" }).country,
+  "UA",
+  "Ukrainian Cyrillic heuristic -> UA market"
+);
+eq(
+  c.detectVideoMarket({ fallbackCountry: "PL" }).country,
+  "PL",
+  "empty signals -> viewer fallback"
+);
 
 // calibration knobs: rpmScale multiplies the prior, rpmOverride pins RPM
 const baseRpm = c.estimateRevenue({ views: 100000, durationSec: 6000 });

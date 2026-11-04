@@ -26,7 +26,8 @@
 
   function ytcfgGet(key) {
     try {
-      const cfg = window.ytcfg;
+      const win = YTCAL.core.unwrap ? YTCAL.core.unwrap(window) : window;
+      const cfg = win.ytcfg;
       if (!cfg) return null;
       if (typeof cfg.get === "function") {
         const v = cfg.get(key);
@@ -134,8 +135,9 @@
       const t = collectTokens(data, videoId);
       if (t) return t;
     }
-    if (window.ytInitialData) {
-      const t = collectTokens(window.ytInitialData, videoId);
+    const win = YTCAL.core.unwrap ? YTCAL.core.unwrap(window) : window;
+    if (win.ytInitialData) {
+      const t = collectTokens(win.ytInitialData, videoId);
       if (t) return t;
     }
     return null;

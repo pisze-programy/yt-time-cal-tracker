@@ -339,13 +339,24 @@
   }
 
   // Nearest renderer exposing `.data` (Polymer) — the source of menu/feedback tokens.
+  // Unwraps Firefox's Xray wrapper (`wrappedJSObject`) when running in an isolated content script.
+  function unwrap(obj) {
+    try {
+      return obj && obj.wrappedJSObject ? obj.wrappedJSObject : obj;
+    } catch (_) {
+      return obj;
+    }
+  }
+
   function getRendererData(el) {
     for (const c of el.querySelectorAll("*")) {
-      if (c.data && typeof c.data === "object") return c.data;
+      const u = unwrap(c);
+      if (u && u.data && typeof u.data === "object") return u.data;
     }
     let node = el;
     while (node && node !== document.body && node.tagName !== "YTD-APP") {
-      if (node.data && typeof node.data === "object") return node.data;
+      const u = unwrap(node);
+      if (u && u.data && typeof u.data === "object") return u.data;
       node = node.parentElement;
     }
     return null;
@@ -420,6 +431,7 @@
   function isLowQuality(input, t) {
     const views = input && input.views;
     const ageHours = input && input.ageHours;
+    const durationSec = input && input.durationSec;
     const lb = input && input.lb;
     if (views == null) return false;
     t = t || thresholds();
@@ -436,7 +448,21 @@
     if (age < minAge) return false;
 
     if (age <= oldHours) {
-      return views < maxViews || smoothedVph(views, age) < minVph;
+      if (views < maxViews) return true;
+      const vph = smoothedVph(views, age);
+      const durationMin = durationSec != null && durationSec > 0 ? durationSec / 60 : null;
+      const dw = t.durationWeight != null ? t.durationWeight : 0.25;
+      const neutralMin = t.durationNeutralMin != null ? t.durationNeutralMin : 8;
+      // Long-form videos gather views more slowly; apply the same length boost >= 1.
+      const durBoost =
+        durationMin != null && durationMin > neutralMin
+          ? clamp(Math.pow(durationMin / neutralMin, dw), 1, 1.8)
+          : 1;
+      // Smooth the transition between 24h and oldHours (48h) so there is no 5x cliff at 48h.
+      const fade = age > 24 && oldHours > 24 ? clamp((age - 24) / (oldHours - 24), 0, 1) : 0;
+      const floorVph = smoothedVph(maxViewsOld, oldHours);
+      const effectiveMinVph = minVph * (1 - 0.5 * fade) + floorVph * (0.5 * fade);
+      return vph * durBoost < effectiveMinVph;
     }
     return views < maxViewsOld;
   }
@@ -497,13 +523,16 @@
     // "no data" instead of rendering nonsense. See MAX_COUNT.
     if (!Number.isFinite(views) || views <= 0 || views > MAX_COUNT) return null;
     const t = thresholds();
-    const commentWeight = t.commentWeight != null ? t.commentWeight : 3;
+    const commentWeight = t.commentWeight != null ? t.commentWeight : 1;
 
-    const L = Number.isFinite(likes) ? likes : null;
-    const C = Number.isFinite(comments) ? comments : null;
-    const engagementKnown = L != null || C != null;
+    const L = Number.isFinite(likes) && likes >= 0 ? likes : null;
+    const C = Number.isFinite(comments) && comments >= 0 ? comments : null;
+    // Engagement baseline (~2.5%) is calibrated on (likes + comments) / views where likes
+    // make up ~90% of reactions. If likes are unknown (hidden by creator or not yet in DOM),
+    // comments alone (~0.25% of views) must NOT be scored against the 2.5% baseline.
+    const engagementKnown = L != null;
 
-    const weighted = (L || 0) + commentWeight * (C || 0);
+    const weighted = engagementKnown ? L + commentWeight * (C || 0) : 0;
     const lb = engagementKnown ? wilsonLowerBound(weighted, views) : null;
     const rawRate = engagementKnown ? weighted / views : null;
 
@@ -534,19 +563,44 @@
     const score = scoreFromZ(zV, zP, zE, W);
     const confidence = W.v + W.p + (engagementKnown ? W.e : 0);
     const z = { v: zV, p: zP, e: zE };
-    const verdict = verdictOf(score, { views, ageHours, lb, engagementKnown }, z);
+    const verdict = verdictOf(score, { views, ageHours, durationSec, lb, engagementKnown }, z);
 
     let reason = null;
     if (verdict === "Low") {
-      reason = isLowQuality({ views, ageHours, lb }, t)
+      reason = isLowQuality({ views, ageHours, durationSec, lb }, t)
         ? "below reach / velocity policy"
         : "low aggregate score";
     } else if (verdict === "Suspicious") {
       reason = "high reach with very low engagement";
     }
 
+    const toSubscore = (zVal) => Math.round(100 / (1 + Math.exp(-0.9 * zVal)));
+    const baseViews = Math.max(1, Math.pow(10, sv.mean) - 1);
+    const baseVph = Math.max(1, Math.pow(10, sp.mean) - 1);
+
     return {
-      metrics: { views, likes: L, comments: C, ageHours, durationSec, vph, vphAdj, durFactor, lb, rawRate, engagementKnown, recent },
+      metrics: {
+        views,
+        likes: L,
+        comments: C,
+        ageHours,
+        durationSec,
+        vph,
+        vphAdj,
+        durFactor,
+        lb,
+        rawRate,
+        engagementKnown,
+        recent,
+        viewsRatio: views / baseViews,
+        vphRatio: vphAdj / baseVph,
+        erRatio: rawRate != null ? rawRate / se.mean : null,
+      },
+      subscores: {
+        reach: toSubscore(zV),
+        velocity: toSubscore(zP),
+        engagement: engagementKnown ? toSubscore(zE) : null,
+      },
       z,
       score,
       confidence,
@@ -581,7 +635,32 @@
     rpmScale: 1.0, // multiply the prior RPM (calibration: set ~1.5 for a high-retention PL news channel)
     rpmOverride: null, // absolute RPM in PLN, pins the estimate (own-channel calibration)
     cpmPlnByCountry: Object.freeze({
-      PL: 30, CZ: 26, DE: 60, GB: 70, US: 100, UA: 10, IN: 5, _default: 30,
+      PL: 30,
+      CZ: 26,
+      DE: 60,
+      GB: 70,
+      US: 100,
+      CA: 75,
+      AU: 85,
+      CH: 85,
+      NO: 80,
+      NL: 60,
+      SE: 60,
+      DK: 60,
+      FI: 55,
+      FR: 50,
+      JP: 55,
+      KR: 45,
+      IT: 42,
+      ES: 38,
+      PT: 32,
+      BR: 16,
+      MX: 18,
+      TR: 12,
+      RU: 12,
+      UA: 10,
+      IN: 5,
+      _default: 30,
     }),
     // CPM multiplier by YouTube category (1.0 = general content). Based on published
     // CPM-by-niche ranges: finance/business highest, tech/education above average,
@@ -683,6 +762,168 @@
     const s = String(raw).trim();
     if (REVENUE_DEFAULTS.nicheFactor[s] != null) return s;
     return CATEGORY_ALIASES[s.toLowerCase()] || s;
+  }
+
+  // Maps a BCP-47 language code to its primary YouTube ad market (ISO-3166 country).
+  const LANG_TO_COUNTRY = Object.freeze({
+    pl: "PL",
+    cs: "CZ",
+    sk: "CZ",
+    de: "DE",
+    en: "US",
+    fr: "FR",
+    es: "ES",
+    pt: "BR",
+    it: "IT",
+    nl: "NL",
+    sv: "SE",
+    no: "NO",
+    nb: "NO",
+    nn: "NO",
+    da: "DK",
+    fi: "FI",
+    ja: "JP",
+    ko: "KR",
+    tr: "TR",
+    uk: "UA",
+    ru: "RU",
+    hi: "IN",
+    bn: "IN",
+    ta: "IN",
+    te: "IN",
+    mr: "IN",
+  });
+
+  // Refines multi-region languages (EN -> US/GB/AU/CA/IN, ES -> ES/MX, PT -> BR/PT)
+  // using currency, TLD, spelling and location cues in title + description.
+  function refineRegionForLang(lang, text) {
+    const s = String(text || "");
+    const low = s.toLowerCase();
+    if (lang === "en") {
+      if (/\.co\.uk\b|£|\b(uk|britain|british|london|bbc|england|scotland|colour|favourite|programme|centre)\b/i.test(s)) {
+        return "GB";
+      }
+      if (/\.com\.au\b|\b(australia|australian|sydney|melbourne)\b/i.test(s)) return "AU";
+      if (/\.ca\b|\b(canada|canadian|toronto|vancouver|montreal)\b/i.test(s)) return "CA";
+      if (/₹|\b(india|indian|rupees|lakh|crore|mumbai|delhi|bangalore|bengaluru)\b/i.test(s)) return "IN";
+      return "US";
+    }
+    if (lang === "es") {
+      if (/\.mx\b|\b(méxico|mexico|cdmx|pesos mexicanos)\b/i.test(low)) return "MX";
+      return "ES";
+    }
+    if (lang === "pt") {
+      if (/\.pt\b|\b(portugal|lisboa|porto)\b/i.test(low)) return "PT";
+      return "BR";
+    }
+    return LANG_TO_COUNTRY[lang] || null;
+  }
+
+  function parseBcp47(tag) {
+    if (!tag || typeof tag !== "string") return null;
+    // Strip YouTube audioTrack suffixes like "en.4" or "pl-PL.2"
+    const clean = tag.trim().split(".")[0].replace(/_/g, "-");
+    const m = clean.match(/^([a-zA-Z]{2,3})(?:-([a-zA-Z]{2}))?(?:-|$)/);
+    if (!m) return null;
+    return {
+      lang: m[1].toLowerCase(),
+      region: m[2] ? m[2].toUpperCase() : null,
+    };
+  }
+
+  // Detects the language and ad market (country) of a video from:
+  //   1. Explicit metadata tags (defaultAudioLanguage / defaultLanguage)
+  //   2. Original audio track tag in streamingData.adaptiveFormats
+  //   3. Auto-generated (ASR) or primary caption track language in playerCaptionsTracklistRenderer
+  //   4. Script + diacritics + stopword analysis of title & description
+  //   5. Fallback to the viewer's market
+  function detectVideoMarket({
+    defaultLanguage,
+    audioLang,
+    asrLang,
+    captionLang,
+    title,
+    description,
+    fallbackCountry,
+  } = {}) {
+    const sample = `${title || ""} ${description || ""}`.slice(0, 4000);
+
+    const candidates = [
+      [defaultLanguage, "video-meta"],
+      [audioLang, "audio-track"],
+      [asrLang, "captions-asr"],
+      [captionLang, "captions"],
+    ];
+
+    for (const [raw, source] of candidates) {
+      const parsed = parseBcp47(raw);
+      if (!parsed || !LANG_TO_COUNTRY[parsed.lang]) continue;
+      const country =
+        parsed.region && REVENUE_DEFAULTS.cpmPlnByCountry[parsed.region] != null
+          ? parsed.region
+          : refineRegionForLang(parsed.lang, sample);
+      if (country) return { country, lang: parsed.lang, source };
+    }
+
+    // Fallback to script & linguistic cues in title + description
+    if (sample.trim()) {
+      // Non-Latin scripts
+      if (/[\u0900-\u097F]/.test(sample)) return { country: "IN", lang: "hi", source: "text-script" };
+      if (/[\u3040-\u30FF]/.test(sample)) return { country: "JP", lang: "ja", source: "text-script" };
+      if (/[\uAC00-\uD7AF]/.test(sample)) return { country: "KR", lang: "ko", source: "text-script" };
+      if (/[А-Яа-яЁёІіЇїЄєҐґ]/.test(sample)) {
+        const isUa = /[ІіЇїЄєҐґ]|\b(як|що|це|для|або|від|про|та)\b/i.test(sample);
+        return { country: isUa ? "UA" : "RU", lang: isUa ? "uk" : "ru", source: "text-script" };
+      }
+
+      // Latin language scoring (title weighted 3x because descriptions sometimes contain links/loanwords)
+      const textWeighted = `${title || ""} ${title || ""} ${title || ""} ${description || ""}`.toLowerCase();
+      const countMatches = (re) => (textWeighted.match(re) || []).length;
+
+      const scores = {
+        pl:
+          countMatches(/[ąćęłńóśźż]/g) * 2 +
+          countMatches(/\b(się|nie|jest|jak|czy|dla|tylko|przez|oraz|jego|który|bardzo|więc|żeby|będzie|tym|tego|ale|już|co)\b/g) * 3,
+        de:
+          countMatches(/[äöüß]/g) * 2 +
+          countMatches(/\b(und|der|die|das|nicht|mit|auf|für|von|ist|dem|den|sich|auch|ein|eine|wie|wir|ich)\b/g) * 3,
+        cs:
+          countMatches(/[ěščřžůťďň]/g) * 2 +
+          countMatches(/\b(pro|jsem|jsou|který|nebo|jako|když|při|aby|ale|také)\b/g) * 3,
+        es:
+          countMatches(/[ñ¿¡]/g) * 3 +
+          countMatches(/\b(los|las|una|para|con|por|como|más|pero|sus|del|esta|todo|qué|cómo)\b/g) * 3,
+        fr:
+          countMatches(/[œæç]/g) * 2 +
+          countMatches(/\b(les|des|une|dans|pour|que|pas|sur|avec|plus|sont|cette|mais|aux|vous|nous)\b/g) * 3,
+        pt:
+          countMatches(/[ãõ]/g) * 3 +
+          countMatches(/\b(não|uma|com|para|dos|das|mais|como|mas|foi|pelo|você|isso)\b/g) * 3,
+        it:
+          countMatches(/\b(che|non|per|una|con|del|della|sono|anche|più|questo|dalla|degli|nella)\b/g) * 3,
+        en:
+          countMatches(/\b(the|and|for|that|with|this|from|your|have|are|was|what|how|why|about|into|more|will|can|not|you|out|all|new)\b/g) * 3,
+      };
+
+      let bestLang = null;
+      let bestScore = 0;
+      for (const [k, sc] of Object.entries(scores)) {
+        if (sc > bestScore) {
+          bestScore = sc;
+          bestLang = k;
+        }
+      }
+      if (bestLang && bestScore >= 6) {
+        return {
+          country: refineRegionForLang(bestLang, sample),
+          lang: bestLang,
+          source: "text-heuristic",
+        };
+      }
+    }
+
+    const fb = String(fallbackCountry || REVENUE_DEFAULTS.country || "PL").toUpperCase();
+    return { country: fb, lang: null, source: "viewer-fallback" };
   }
 
   function revenueConfig() {
@@ -844,6 +1085,7 @@
     isViewsLabel,
     isAgeLabel,
     rowViewsText,
+    unwrap,
     getRendererData,
     deepFind,
     wilsonLowerBound,
@@ -851,6 +1093,7 @@
     isLowQuality,
     analyze,
     estimateRevenue,
+    detectVideoMarket,
     revenueConfig,
     canonicalCategory,
     REVENUE_DEFAULTS,

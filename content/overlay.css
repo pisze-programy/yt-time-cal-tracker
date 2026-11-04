@@ -1,24 +1,43 @@
-/* overlay.css — native-style blur mask, action buttons, verdict badge and watch stats row */
+/* overlay.css — dark-glass UI system: low-quality blur mask, verdict badges,
+   floating bottom filter dock, and watch-page analytics card. */
+
+:root {
+  --ytcal-glass-bg: rgba(14, 14, 18, 0.76);
+  --ytcal-glass-border: rgba(255, 255, 255, 0.12);
+  --ytcal-surface: rgba(255, 255, 255, 0.045);
+  --ytcal-surface-hover: rgba(255, 255, 255, 0.09);
+  --ytcal-text: #f3f4f6;
+  --ytcal-text-muted: rgba(243, 244, 246, 0.62);
+}
+
+/* Band color palette — rich, distinct background colors visible at a glance */
+.ytcal-band-low        { --ytcal-bg: rgba(198, 40, 40, 0.92);  --ytcal-border: rgba(255, 138, 128, 0.45); --ytcal-accent: #ff8a80; }
+.ytcal-band-weak       { --ytcal-bg: rgba(230, 81, 0, 0.92);   --ytcal-border: rgba(255, 183, 77, 0.45);  --ytcal-accent: #ffb74d; }
+.ytcal-band-average    { --ytcal-bg: rgba(158, 157, 36, 0.92); --ytcal-border: rgba(240, 244, 195, 0.45); --ytcal-accent: #dce775; }
+.ytcal-band-good       { --ytcal-bg: rgba(104, 159, 56, 0.92); --ytcal-border: rgba(220, 237, 200, 0.45); --ytcal-accent: #aed581; }
+.ytcal-band-strong     { --ytcal-bg: rgba(46, 125, 50, 0.92);  --ytcal-border: rgba(165, 214, 167, 0.45); --ytcal-accent: #81c784; }
+.ytcal-band-excellent  { --ytcal-bg: rgba(21, 101, 192, 0.92); --ytcal-border: rgba(144, 202, 249, 0.45); --ytcal-accent: #64b5f6; }
+.ytcal-band-top        { --ytcal-bg: rgba(106, 27, 154, 0.92); --ytcal-border: rgba(206, 147, 216, 0.50); --ytcal-accent: #ce93d8; }
+.ytcal-band-suspicious { --ytcal-bg: rgba(179, 107, 0, 0.92);  --ytcal-border: rgba(255, 213, 79, 0.45);  --ytcal-accent: #ffd54f; }
 
 .ytcal-low-quality {
   position: relative !important;
 }
 
-/* Blur layer — native "removed video" mask look. */
+/* Blur layer — frosted dark glass mask. */
 .ytcal-overlay {
   position: absolute;
   inset: 0;
   z-index: 5;
   border-radius: 12px;
   cursor: pointer;
-  background: rgba(0, 0, 0, 0.28);
-  backdrop-filter: blur(14px) brightness(0.55) saturate(0.8);
-  -webkit-backdrop-filter: blur(14px) brightness(0.55) saturate(0.8);
+  background: rgba(10, 10, 14, 0.42);
+  backdrop-filter: blur(16px) brightness(0.48) saturate(0.75);
+  -webkit-backdrop-filter: blur(16px) brightness(0.48) saturate(0.75);
+  transition: opacity 0.18s ease;
 }
 
-/* Idle = hidden tab or unfocused window: nothing is on screen, so skip the expensive
-   backdrop-filter. Actions + label hide with the blur and blurred tiles dim
-   further; everything returns with the focus. */
+/* Idle = hidden tab or unfocused window: skip expensive backdrop-filter. */
 html.ytcal-idle .ytcal-overlay {
   backdrop-filter: none;
   -webkit-backdrop-filter: none;
@@ -43,8 +62,8 @@ html.ytcal-idle .ytcal-low-quality {
 /* Button stack: reveal / not interested. */
 .ytcal-actions {
   position: absolute;
-  top: 8px;
-  right: 8px;
+  top: 10px;
+  right: 10px;
   z-index: 6;
   display: flex;
   flex-direction: column;
@@ -52,17 +71,19 @@ html.ytcal-idle .ytcal-low-quality {
 }
 
 .ytcal-btn {
-  width: 34px;
-  height: 34px;
-  border: none;
+  width: 32px;
+  height: 32px;
+  border: 1px solid rgba(255, 255, 255, 0.14);
   border-radius: 50%;
   cursor: pointer;
   display: grid;
   place-items: center;
-  color: #fff;
-  background: rgba(15, 15, 15, 0.82);
-  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.5);
-  transition: transform 0.12s ease, background 0.12s ease;
+  color: #f3f4f6;
+  background: rgba(15, 15, 20, 0.78);
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.45);
+  transition: transform 0.14s ease, background 0.14s ease, border-color 0.14s ease;
 }
 
 .ytcal-btn:hover {
@@ -70,16 +91,18 @@ html.ytcal-idle .ytcal-low-quality {
 }
 
 .ytcal-reveal:hover {
-  background: #2ba640;
+  background: rgba(16, 185, 129, 0.85);
+  border-color: rgba(52, 211, 153, 0.6);
 }
 
 .ytcal-dismiss:hover {
-  background: #cc0000;
+  background: rgba(239, 68, 68, 0.85);
+  border-color: rgba(248, 113, 113, 0.6);
 }
 
 .ytcal-btn svg {
-  width: 20px;
-  height: 20px;
+  width: 18px;
+  height: 18px;
   fill: currentColor;
   pointer-events: none;
 }
@@ -89,38 +112,42 @@ html.ytcal-idle .ytcal-low-quality {
   left: 10px;
   bottom: 10px;
   z-index: 6;
-  max-width: calc(100% - 60px);
-  padding: 3px 8px;
+  max-width: calc(100% - 56px);
+  padding: 4px 10px;
   border-radius: 999px;
-  font: 600 12px/1.3 Roboto, Arial, sans-serif;
-  color: #ffd6d6;
-  background: rgba(120, 0, 0, 0.72);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  font: 500 11.5px/1.35 Inter, Roboto, Arial, sans-serif;
+  letter-spacing: 0.15px;
+  color: #f3f4f6;
+  background: rgba(15, 15, 20, 0.82);
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+  box-shadow: 0 2px 10px rgba(0, 0, 0, 0.4);
   pointer-events: none;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
-/* Verdict badge — one qualitative label, four bands + suspicious. */
+/* Verdict badge — vivid band background color visible at a glance. */
 .ytcal-badge {
   display: inline-flex;
   align-items: center;
-  gap: 3px;
+  gap: 5px;
   margin-inline-start: 6px;
-  padding: 1px 8px;
+  padding: 2px 9px;
   border-radius: 999px;
-  font: 700 11px/1.6 Roboto, Arial, sans-serif;
+  border: 1px solid var(--ytcal-border, rgba(255, 255, 255, 0.28));
+  background: var(--ytcal-bg, #374151);
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+  font: 700 11.5px/1.5 Inter, Roboto, Arial, sans-serif;
   letter-spacing: 0.2px;
   color: #fff;
+  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.35);
   vertical-align: middle;
   white-space: nowrap;
 }
-
-.ytcal-band-low { background: #c62828; }
-.ytcal-band-weak { background: #e65100; }
-.ytcal-band-average { background: #9e9d24; }
-.ytcal-band-good { background: #7cb342; }
-.ytcal-band-strong { background: #2e7d32; }
-.ytcal-band-excellent { background: #1565c0; }
-.ytcal-band-top { background: #6a1b9a; }
-.ytcal-band-suspicious { background: #b36b00; }
 
 /* Verdict filter bar — unified floating bottom dock with a blurred,
    semi-transparent background. Always visible across YouTube, hidden in fullscreen. */
@@ -141,11 +168,11 @@ html.ytcal-idle .ytcal-low-quality {
   margin: 0;
   padding: 6px 10px;
   border-radius: 999px;
-  border: 1px solid rgba(255, 255, 255, 0.14);
-  background: rgba(15, 15, 15, 0.65);
-  backdrop-filter: blur(16px) saturate(1.4);
-  -webkit-backdrop-filter: blur(16px) saturate(1.4);
-  box-shadow: 0 6px 24px rgba(0, 0, 0, 0.45);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  background: rgba(12, 12, 16, 0.72);
+  backdrop-filter: blur(18px) saturate(1.5);
+  -webkit-backdrop-filter: blur(18px) saturate(1.5);
+  box-shadow: 0 10px 32px rgba(0, 0, 0, 0.55), inset 0 1px 0 rgba(255, 255, 255, 0.08);
 }
 
 .ytcal-filter-bar::-webkit-scrollbar {
@@ -164,36 +191,46 @@ html:has(ytd-app[fullscreen]) .ytcal-filter-bar {
 html.ytcal-idle .ytcal-filter-bar {
   backdrop-filter: none;
   -webkit-backdrop-filter: none;
-  background: rgba(15, 15, 15, 0.9);
+  background: rgba(14, 14, 18, 0.94);
 }
 
 .ytcal-filter-chip {
   flex: 0 0 auto;
-  border: none;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  border: 1px solid var(--ytcal-border, rgba(255, 255, 255, 0.25));
   border-radius: 999px;
   padding: 5px 12px;
-  font: 600 12px/1.3 Roboto, Arial, sans-serif;
-  letter-spacing: 0.2px;
+  font: 600 12px/1.3 Inter, Roboto, Arial, sans-serif;
+  letter-spacing: 0.15px;
   color: #fff;
+  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.35);
+  background: var(--ytcal-bg, rgba(255, 255, 255, 0.15));
   cursor: pointer;
   white-space: nowrap;
-  transition: opacity 0.15s ease, transform 0.12s ease, filter 0.15s ease;
+  transition: opacity 0.15s ease, transform 0.12s ease, filter 0.15s ease, border-color 0.15s ease, background 0.15s ease;
 }
 
 .ytcal-filter-chip:hover {
   transform: translateY(-1px);
+  filter: brightness(1.1);
 }
 
 /* Switched OFF = this verdict is blurred. */
 .ytcal-filter-chip[aria-pressed="false"] {
-  opacity: 0.35;
-  filter: grayscale(0.65);
+  opacity: 0.36;
+  filter: grayscale(0.7);
 }
 
-/* Badge as a thumbnail overlay — top edge, right margin 8px, native badge shape. */
+.ytcal-filter-chip[aria-pressed="false"] .ytcal-chip-name {
+  text-decoration: line-through;
+}
+
+/* Badge as a thumbnail overlay — top-right corner, colored pill. */
 .ytcal-thumb-badge {
   position: absolute;
-  top: 0;
+  top: 6px;
   right: 8px;
   left: auto;
   z-index: 6;
@@ -203,130 +240,215 @@ html.ytcal-idle .ytcal-filter-bar {
 
 .ytcal-thumb-badge .ytcal-badge {
   margin-inline-start: 0;
-  border-radius: 4px;
-  padding: 1px 4px;
-  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.55);
+  border-radius: 6px;
+  padding: 2px 8px;
+  background: var(--ytcal-bg, #374151);
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.6);
 }
 
-/* Reach+velocity only (engagement unknown): keep the band color, add a subtle ring. */
-.ytcal-badge.ytcal-no-engagement {
-  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.4);
-}
-
-/* Muted chip for the provisional "reach & velocity only" state. */
-.ytcal-badge.ytcal-muted {
-  background: rgba(120, 120, 120, 0.5);
-  font-weight: 600;
-}
-
-/* Watch page stats row (above the title). */
+/* Watch page analytics card (above the title). */
 .ytcal-watch-stats {
   position: relative;
   display: flex;
   flex-direction: column;
-  gap: 4px;
-  margin: 0 0 8px;
-  padding: 7px 44px 7px 12px;
-  border-radius: 12px;
-  background: rgba(255, 255, 255, 0.06);
-  font: 500 13px/1.4 Roboto, Arial, sans-serif;
-  color: var(--yt-spec-text-primary, #f1f1f1);
+  margin: 0 0 10px;
+  padding: 8px 44px 8px 10px;
+  border-radius: 14px;
+  border: 1px solid rgba(255, 255, 255, 0.09);
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.055) 0%, rgba(255, 255, 255, 0.025) 100%);
+  box-shadow: 0 4px 18px rgba(0, 0, 0, 0.22);
+  font: 500 12.5px/1.4 Inter, Roboto, Arial, sans-serif;
+  color: var(--ytcal-text);
 }
 
 .ytcal-watch-stats .ytcal-row {
   display: flex;
   flex-wrap: wrap;
   align-items: center;
-  gap: 8px;
+  gap: 6px;
+  cursor: pointer;
 }
 
-.ytcal-watch-stats .ytcal-stat {
+.ytcal-watch-stats .ytcal-badge {
+  margin-inline-start: 0;
+  padding: 4px 11px;
+  font-size: 12px;
+  background: var(--ytcal-bg, #374151);
+}
+
+.ytcal-watch-stats .ytcal-pill {
   display: inline-flex;
   align-items: center;
-  gap: 5px;
-  cursor: default;
+  gap: 6px;
+  padding: 4px 10px;
+  border-radius: 999px;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  background: var(--ytcal-surface);
+  color: var(--ytcal-text);
+  white-space: nowrap;
+  transition: background 0.14s ease, border-color 0.14s ease;
 }
 
-.ytcal-watch-stats .ytcal-stat b {
+.ytcal-watch-stats .ytcal-pill:hover {
+  background: var(--ytcal-surface-hover);
+  border-color: rgba(255, 255, 255, 0.15);
+}
+
+.ytcal-watch-stats .ytcal-pill-label {
+  font-size: 11px;
+  font-weight: 500;
+  color: var(--ytcal-text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.35px;
+}
+
+.ytcal-watch-stats .ytcal-pill b {
   font-weight: 700;
+  color: #fff;
 }
 
-.ytcal-watch-stats .ytcal-pipe {
-  opacity: 0.3;
+.ytcal-watch-stats .ytcal-pill-sub {
+  padding-left: 4px;
+  border-left: 1px solid rgba(255, 255, 255, 0.12);
+  font-size: 11px;
+  color: var(--ytcal-text-muted);
 }
 
-/* Estimated-earnings chip + SocialBlade link. */
+.ytcal-watch-stats .ytcal-pill-muted {
+  opacity: 0.6;
+}
+
+/* Estimated-earnings pill + SocialBlade button. */
+.ytcal-watch-stats .ytcal-money {
+  border-color: rgba(250, 204, 21, 0.22);
+  background: rgba(250, 204, 21, 0.07);
+}
+
 .ytcal-watch-stats .ytcal-money b {
-  color: #ffd54f;
+  color: #fde047;
 }
 
 .ytcal-watch-stats .ytcal-sb-link {
-  color: inherit;
+  color: var(--ytcal-text);
   text-decoration: none;
-  opacity: 0.78;
-  border-bottom: 1px dotted currentColor;
+  font-weight: 600;
+  font-size: 11.5px;
 }
 
 .ytcal-watch-stats .ytcal-sb-link:hover {
-  opacity: 1;
+  border-color: rgba(255, 255, 255, 0.28);
+  color: #fff;
 }
 
-.ytcal-watch-stats .ytcal-verdict-line {
-  display: block;
-  font-size: 12px;
-  line-height: 1.5;
-  opacity: 0.85;
-}
-
-.ytcal-watch-stats .ytcal-verdict-line b {
-  font-weight: 700;
-  opacity: 1;
-}
-
-/* Animated collapsible knowledge block. */
+/* Animated collapsible 3-column analytics drawer. */
 .ytcal-details {
   max-height: 0;
   overflow: hidden;
   opacity: 0;
-  transition: max-height 0.22s ease, opacity 0.22s ease;
+  transition: max-height 0.24s cubic-bezier(0.4, 0, 0.2, 1), opacity 0.2s ease, margin-top 0.2s ease;
 }
 
 .ytcal-details.open {
-  max-height: 220px;
+  max-height: 320px;
   opacity: 1;
+  margin-top: 10px;
 }
 
-.ytcal-details .ytcal-verdict-line {
-  display: block;
-  margin-top: 2px;
+.ytcal-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+  gap: 8px;
+}
+
+.ytcal-metric-card {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 9px 11px;
+  border-radius: 10px;
+  border: 1px solid rgba(255, 255, 255, 0.07);
+  background: rgba(0, 0, 0, 0.24);
+}
+
+.ytcal-metric-top {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 8px;
+  font-size: 11.5px;
+  color: var(--ytcal-text-muted);
+}
+
+.ytcal-metric-top b {
+  font-size: 12px;
+  font-weight: 700;
+  color: #fff;
+}
+
+.ytcal-bar-track {
+  height: 4px;
+  width: 100%;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.1);
+  overflow: hidden;
+}
+
+.ytcal-bar-fill {
+  height: 100%;
+  border-radius: 999px;
+  background: linear-gradient(90deg, #38bdf8, #34d399);
+}
+
+.ytcal-metric-sub {
+  font-size: 11px;
+  line-height: 1.35;
+  color: var(--ytcal-text-muted);
+}
+
+.ytcal-meta-footer {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px 14px;
+  margin-top: 8px;
+  padding: 7px 11px;
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.03);
+  font-size: 11px;
+  color: var(--ytcal-text-muted);
+}
+
+.ytcal-meta-footer b {
+  color: rgba(255, 255, 255, 0.85);
+  font-weight: 600;
 }
 
 /* Expander button — top-right, YT-style rounded-full tonal button. */
 .ytcal-expand {
   position: absolute;
-  top: 8px;
+  top: 7px;
   right: 8px;
-  width: 32px;
-  height: 32px;
+  width: 30px;
+  height: 30px;
   padding: 0;
   box-sizing: border-box;
-  border: none;
+  border: 1px solid rgba(255, 255, 255, 0.08);
   border-radius: 9999px;
   cursor: pointer;
   display: grid;
   place-items: center;
-  background: rgba(255, 255, 255, 0.08);
-  color: var(--yt-spec-text-primary, #f1f1f1);
-  transition: background 0.15s ease;
+  background: rgba(255, 255, 255, 0.06);
+  color: var(--ytcal-text);
+  transition: background 0.15s ease, border-color 0.15s ease;
 }
 
 .ytcal-expand:hover {
-  background: rgba(255, 255, 255, 0.18);
+  background: rgba(255, 255, 255, 0.14);
+  border-color: rgba(255, 255, 255, 0.2);
 }
 
 .ytcal-expand svg {
-  width: 20px;
-  height: 20px;
+  width: 18px;
+  height: 18px;
   fill: currentColor;
   pointer-events: none;
 }

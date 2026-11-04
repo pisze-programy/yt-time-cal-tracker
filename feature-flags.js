@@ -45,8 +45,10 @@ window.YTCAL_FEATURES = {
     bandHigh: 1.35,
     rpmScale: 1.0,                  // multiply the prior RPM (calibration; ~1.5 for high-retention PL news)
     rpmOverride: null,              // absolute RPM in PLN that pins the estimate (own-channel calibration)
-    cpmPlnByCountry: {              // advertiser CPM (PLN) by market; _default is the fallback
-      PL: 30, CZ: 26, DE: 60, GB: 70, US: 100, UA: 10, IN: 5, _default: 30,
+    cpmPlnByCountry: {              // advertiser CPM (PLN) by video market; _default is the fallback
+      PL: 30, CZ: 26, DE: 60, GB: 70, US: 100, CA: 75, AU: 85, CH: 85, NO: 80,
+      NL: 60, SE: 60, DK: 60, FI: 55, FR: 50, JP: 55, KR: 45, IT: 42, ES: 38,
+      PT: 32, BR: 16, MX: 18, TR: 12, RU: 12, UA: 10, IN: 5, _default: 30,
     },
     nicheFactor: {                  // CPM multiplier per YouTube category
       default: 1.0, Finance: 2.0, Business: 1.8, "Science & Technology": 1.4,

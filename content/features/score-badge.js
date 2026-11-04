@@ -61,10 +61,16 @@
       return parts.join(" · ");
     }
 
+    #badgeLabel(a) {
+      if (a.verdict === "Low" || a.verdict === "Suspicious") return a.verdict;
+      return `${a.verdict} · ${Math.round(a.score)}`;
+    }
+
     #injectBadge(el, a) {
       const cls =
         `ytcal-badge ytcal-band-${a.band}` + (a.metrics.engagementKnown ? "" : " ytcal-no-engagement");
       const title = this.#tooltip(a);
+      const text = this.#badgeLabel(a);
 
       // Preferred: overlay badge on the thumbnail, top-right (margin 8px), clear of the native "Nowość".
       const thumb = this.#findThumbnail(el);
@@ -72,13 +78,13 @@
         const existing = thumb.querySelector(".ytcal-thumb-badge .ytcal-badge");
         if (existing) {
           existing.className = cls;
-          existing.textContent = a.verdict;
+          existing.textContent = text;
           existing.title = title;
           return true;
         }
         const badge = document.createElement("span");
         badge.className = cls;
-        badge.textContent = a.verdict;
+        badge.textContent = text;
         badge.title = title;
         const wrap = document.createElement("yt-thumbnail-overlay-badge-view-model");
         wrap.className =
@@ -94,13 +100,13 @@
       const existing = target.querySelector(".ytcal-badge");
       if (existing) {
         existing.className = cls;
-        existing.textContent = a.verdict;
+        existing.textContent = text;
         existing.title = title;
         return true;
       }
       const badge = document.createElement("span");
       badge.className = cls;
-      badge.textContent = a.verdict;
+      badge.textContent = text;
       badge.title = title;
       target.appendChild(badge);
       return true;

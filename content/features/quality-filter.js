@@ -134,7 +134,7 @@
         b.type = "button";
         b.className = `ytcal-filter-chip ytcal-band-${BAND[v]}`;
         b.dataset.verdict = v;
-        b.textContent = v;
+        b.innerHTML = `<span class="ytcal-chip-name">${v}</span>`;
         b.setAttribute("aria-pressed", String(!this.#hidden.has(v)));
         b.addEventListener("click", (e) => {
           e.preventDefault();
@@ -146,6 +146,7 @@
 
       document.body.appendChild(bar);
       this.#bar = bar;
+      this.#syncBar();
       this.#syncFullscreen();
 
       if (!this.#listenersBound) {
@@ -166,7 +167,12 @@
     #syncBar() {
       if (!this.#bar) return;
       for (const b of this.#bar.querySelectorAll(".ytcal-filter-chip")) {
-        b.setAttribute("aria-pressed", String(!this.#hidden.has(b.dataset.verdict)));
+        const v = b.dataset.verdict;
+        const active = !this.#hidden.has(v);
+        b.setAttribute("aria-pressed", String(active));
+        b.title = active
+          ? `${v}: widoczne — kliknij, aby ukrywać (blur)`
+          : `${v}: ukrywane (blur) — kliknij, aby pokazywać`;
       }
     }
 
@@ -278,7 +284,7 @@
 
     #labelText(meta, verdict) {
       const core = YTCAL.core;
-      return `${verdict} · ${core.formatNumber(meta.views)} views · ${core.formatAgeHours(meta.ageHours)} ago`;
+      return `${verdict} · ${core.formatNumber(meta.views)} wyśw. · ${core.formatAgeHours(meta.ageHours)}`;
     }
 
     #reveal(el, id) {
