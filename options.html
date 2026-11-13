@@ -1,0 +1,75 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>yt-time-cal-tracker — Options</title>
+    <style>
+      body {
+        font-family: system-ui, -apple-system, sans-serif;
+        max-width: 640px;
+        margin: 24px auto;
+        padding: 0 16px;
+        color: #1a1a1a;
+        line-height: 1.5;
+      }
+      h1 { font-size: 1.25rem; margin-bottom: 4px; }
+      p.hint { color: #555; font-size: 0.9rem; margin-top: 0; }
+      label { display: block; font-weight: 600; margin-top: 14px; font-size: 0.9rem; }
+      input[type="text"], input[type="email"], textarea {
+        width: 100%;
+        box-sizing: border-box;
+        padding: 8px 10px;
+        margin-top: 4px;
+        border: 1px solid #ccc;
+        border-radius: 6px;
+        font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+        font-size: 0.85rem;
+      }
+      textarea { min-height: 96px; resize: vertical; }
+      .row { display: flex; gap: 10px; align-items: center; margin-top: 16px; }
+      button {
+        padding: 8px 14px;
+        border-radius: 6px;
+        border: 1px solid #ccc;
+        background: #f5f5f5;
+        cursor: pointer;
+        font-size: 0.9rem;
+      }
+      button.primary {
+        background: #0b57d0;
+        color: #fff;
+        border-color: #0b57d0;
+      }
+      #status { font-size: 0.9rem; margin-left: 4px; }
+      .ok { color: #137333; }
+      .err { color: #c5221f; }
+    </style>
+  </head>
+  <body>
+    <h1>Google Calendar Sync</h1>
+    <p class="hint">
+      Credentials are stored locally in your browser (<code>browser.storage.local</code>)
+      and used only to send watch-time events to your Google Calendar.
+    </p>
+
+    <label for="sa-file">Import Service Account JSON (optional)</label>
+    <input id="sa-file" type="file" accept=".json,application/json" />
+
+    <label for="client-email">Service Account Email (<code>client_email</code>)</label>
+    <input id="client-email" type="email" placeholder="name@project.iam.gserviceaccount.com" />
+
+    <label for="private-key">Private Key (<code>private_key</code> PEM)</label>
+    <textarea id="private-key" placeholder="-----BEGIN PRIVATE KEY-----&#10;...&#10;-----END PRIVATE KEY-----"></textarea>
+
+    <label for="calendar-id">Calendar ID (<code>calendar_id</code>)</label>
+    <input id="calendar-id" type="text" placeholder="...@group.calendar.google.com" />
+
+    <div class="row">
+      <button id="save" class="primary" type="button">Save</button>
+      <button id="clear" type="button">Clear</button>
+      <span id="status" role="status"></span>
+    </div>
+
+    <script src="options.js"></script>
+  </body>
+</html>

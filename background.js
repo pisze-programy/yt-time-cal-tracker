@@ -13,9 +13,31 @@ class CalendarSync {
         );
       }
     });
+
+    browser.storage.onChanged.addListener((changes, area) => {
+      if (area === "local" && changes.ytcal_google_config) {
+        this.#cachedToken = null;
+        this.#tokenExpiry = 0;
+      }
+    });
+  }
+
+  async #getConfig() {
+    const { ytcal_google_config: stored } = await browser.storage.local.get("ytcal_google_config");
+    const cfg = stored || (typeof GOOGLE_CONFIG !== "undefined" ? GOOGLE_CONFIG : null);
+    if (!cfg || !cfg.client_email || !cfg.private_key || !cfg.calendar_id) {
+      return null;
+    }
+    return cfg;
   }
 
   async #createCalendarEvent({ title, url, channel, startedAt, durationSec }) {
+    const cfg = await this.#getConfig();
+    if (!cfg) {
+      console.warn(this.#TAG, "Google Calendar not configured — open extension Options to set credentials");
+      return;
+    }
+
     const start = new Date(startedAt);
     start.setSeconds(0, 0);
     const end = new Date(start.getTime() + durationSec * 1000);
@@ -23,14 +45,14 @@ class CalendarSync {
 
     console.log(this.#TAG, "creating event", title, start.toISOString(), "->", end.toISOString());
 
-    const token = await this.#getToken();
+    const token = await this.#getToken(cfg);
     if (!token) {
       console.error(this.#TAG, "no token – aborting");
       return;
     }
 
     const res = await fetch(
-      `https://www.googleapis.com/calendar/v3/calendars/${encodeURIComponent(GOOGLE_CONFIG.calendar_id)}/events`,
+      `https://www.googleapis.com/calendar/v3/calendars/${encodeURIComponent(cfg.calendar_id)}/events`,
       {
         method: "POST",
         headers: {
@@ -56,7 +78,7 @@ class CalendarSync {
     }
   }
 
-  async #getToken() {
+  async #getToken(cfg) {
     const now = Math.floor(Date.now() / 1000);
     if (this.#cachedToken && this.#tokenExpiry - now > 300) {
       console.log(this.#TAG, "using cached token, expires in", this.#tokenExpiry - now, "s");
@@ -71,7 +93,7 @@ class CalendarSync {
     const claim = this.#b64url(
       new TextEncoder().encode(
         JSON.stringify({
-          iss: GOOGLE_CONFIG.client_email,
+          iss: cfg.client_email,
           scope: "https://www.googleapis.com/auth/calendar.events",
           aud: "https://oauth2.googleapis.com/token",
           iat: now,
@@ -82,7 +104,7 @@ class CalendarSync {
 
     let key;
     try {
-      key = await this.#importPem(GOOGLE_CONFIG.private_key);
+      key = await this.#importPem(cfg.private_key);
     } catch (err) {
       console.error(this.#TAG, "importPem failed", err);
       return null;

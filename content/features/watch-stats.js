@@ -5,10 +5,37 @@
   "use strict";
 
   const YTCAL = (window.YTCAL = window.YTCAL || {});
-  const CHEVRON_DOWN =
-    '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M18.707 8.793a1 1 0 00-1.414 0L12 14.086 6.707 8.793a1 1 0 10-1.414 1.414L12 16.914l6.707-6.707a1 1 0 000-1.414Z"></path></svg>';
-  const CHEVRON_UP =
-    '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5.293 15.207a1 1 0 001.414 0L12 9.914l5.293 5.293a1 1 0 101.414-1.414L12 7.086l-6.707 6.707a1 1 0 000 1.414Z"></path></svg>';
+  const CHEVRON_DOWN_PATH =
+    "M18.707 8.793a1 1 0 00-1.414 0L12 14.086 6.707 8.793a1 1 0 10-1.414 1.414L12 16.914l6.707-6.707a1 1 0 000-1.414Z";
+  const CHEVRON_UP_PATH =
+    "M5.293 15.207a1 1 0 001.414 0L12 9.914l5.293 5.293a1 1 0 101.414-1.414L12 7.086l-6.707 6.707a1 1 0 000 1.414Z";
+
+  function createSvg(pathD) {
+    const ns = "http://www.w3.org/2000/svg";
+    const svg = document.createElementNS(ns, "svg");
+    svg.setAttribute("viewBox", "0 0 24 24");
+    svg.setAttribute("aria-hidden", "true");
+    const path = document.createElementNS(ns, "path");
+    path.setAttribute("d", pathD);
+    svg.appendChild(path);
+    return svg;
+  }
+
+  function h(tag, attrs, ...children) {
+    const node = document.createElement(tag);
+    if (attrs) {
+      for (const [k, v] of Object.entries(attrs)) {
+        if (v == null) continue;
+        if (k === "className") node.className = v;
+        else node.setAttribute(k, String(v));
+      }
+    }
+    for (const c of children) {
+      if (c == null || c === false) continue;
+      node.appendChild(typeof c === "string" ? document.createTextNode(c) : c);
+    }
+    return node;
+  }
 
   const LABEL_PL = {
     high: "Wysoki",
@@ -98,10 +125,10 @@
         host.insertBefore(this.#el, titleRow || host.firstChild);
       }
 
-      const html = this.#template(d, a);
-      if (html !== this.#html) {
-        this.#html = html;
-        this.#el.innerHTML = html;
+      const key = JSON.stringify([d, a.score, a.verdict, a.confidence]);
+      if (key !== this.#html) {
+        this.#html = key;
+        this.#el.replaceChildren(...this.#buildNodes(d, a));
       }
       this.#applyExpanded();
     }
@@ -118,7 +145,7 @@
       if (details) details.classList.toggle("open", this.#expanded);
       if (btn) {
         btn.setAttribute("aria-expanded", this.#expanded ? "true" : "false");
-        btn.innerHTML = this.#expanded ? CHEVRON_UP : CHEVRON_DOWN;
+        btn.replaceChildren(createSvg(this.#expanded ? CHEVRON_UP_PATH : CHEVRON_DOWN_PATH));
       }
     }
 
@@ -411,7 +438,7 @@
       return null;
     }
 
-    #template(d, a) {
+    #buildNodes(d, a) {
       const core = YTCAL.core;
       const m = a.metrics;
       const t = (window.YTCAL_FEATURES && window.YTCAL_FEATURES.thresholds) || {};
@@ -439,33 +466,39 @@
       const pills = [];
       // 1. Primary Verdict + Score pill
       pills.push(
-        `<span class="ytcal-badge ytcal-band-${a.band}" title="${verdictTip}">${a.verdict}${scoreTxt}</span>`
+        h("span", { className: `ytcal-badge ytcal-band-${a.band}`, title: verdictTip }, `${a.verdict}${scoreTxt}`)
       );
 
       // 2. Velocity insight pill
       pills.push(
-        `<span class="ytcal-pill" title="${velocityTip}">` +
-          `<span class="ytcal-pill-label">Tempo</span>` +
-          `<b>${core.formatNumber(Math.round(m.vph))}/h</b>` +
-          (vphMult ? `<span class="ytcal-pill-sub">${vphMult}</span>` : "") +
-          `</span>`
+        h(
+          "span",
+          { className: "ytcal-pill", title: velocityTip },
+          h("span", { className: "ytcal-pill-label" }, "Tempo"),
+          h("b", null, `${core.formatNumber(Math.round(m.vph))}/h`),
+          vphMult ? h("span", { className: "ytcal-pill-sub" }, vphMult) : null
+        )
       );
 
       // 3. Engagement insight pill
       if (erPct != null) {
         pills.push(
-          `<span class="ytcal-pill" title="${engagementTip}">` +
-            `<span class="ytcal-pill-label">ER</span>` +
-            `<b>${erPct}%</b>` +
-            (erMult ? `<span class="ytcal-pill-sub">${erMult}</span>` : "") +
-            `</span>`
+          h(
+            "span",
+            { className: "ytcal-pill", title: engagementTip },
+            h("span", { className: "ytcal-pill-label" }, "ER"),
+            h("b", null, `${erPct}%`),
+            erMult ? h("span", { className: "ytcal-pill-sub" }, erMult) : null
+          )
         );
       } else {
         pills.push(
-          `<span class="ytcal-pill ytcal-pill-muted" title="${engagementTip}">` +
-            `<span class="ytcal-pill-label">ER</span>` +
-            `<b>—</b>` +
-            `</span>`
+          h(
+            "span",
+            { className: "ytcal-pill ytcal-pill-muted", title: engagementTip },
+            h("span", { className: "ytcal-pill-label" }, "ER"),
+            h("b", null, "—")
+          )
         );
       }
 
@@ -475,11 +508,13 @@
         const catTag = rev.category ? ` · ${rev.category}` : "";
         const mktTag = ` · ${rev.country}`;
         pills.push(
-          `<span class="ytcal-pill ytcal-money" title="${this.#revenueTip(rev)}">` +
-            `<span class="ytcal-pill-label">Estymacja</span>` +
-            `<b>~${this.#pln(rev.low)}–${this.#pln(rev.high)} ${rev.currency}</b>` +
-            `<span class="ytcal-pill-sub">RPM ${Math.round(rev.rpmLow)}–${Math.round(rev.rpmHigh)} zł${mktTag}${catTag}</span>` +
-            `</span>`
+          h(
+            "span",
+            { className: "ytcal-pill ytcal-money", title: this.#revenueTip(rev) },
+            h("span", { className: "ytcal-pill-label" }, "Estymacja"),
+            h("b", null, `~${this.#pln(rev.low)}–${this.#pln(rev.high)} ${rev.currency}`),
+            h("span", { className: "ytcal-pill-sub" }, `RPM ${Math.round(rev.rpmLow)}–${Math.round(rev.rpmHigh)} zł${mktTag}${catTag}`)
+          )
         );
       }
 
@@ -487,21 +522,37 @@
       const sbHref = this.#socialBladeUrl(d);
       if (sbHref) {
         pills.push(
-          `<a class="ytcal-pill ytcal-sb-link" target="_blank" rel="noopener" href="${sbHref}" title="Otwórz statystyki kanału w SocialBlade (nowa karta)">SocialBlade ↗</a>`
+          h(
+            "a",
+            {
+              className: "ytcal-pill ytcal-sb-link",
+              target: "_blank",
+              rel: "noopener",
+              href: sbHref,
+              title: "Otwórz statystyki kanału w SocialBlade (nowa karta)",
+            },
+            "SocialBlade ↗"
+          )
         );
       }
 
-      const details = this.#details(d, a, m, erPct, rev);
-
-      return (
-        `<div class="ytcal-row ytcal-row-clickable" title="Kliknij, aby rozwinąć pełną analizę modelu">${pills.join("")}</div>` +
-        `<div class="ytcal-details">${details}</div>` +
-        `<button class="ytcal-expand" type="button" aria-expanded="false" aria-label="Szczegóły analizy">${CHEVRON_DOWN}</button>`
+      const row = h(
+        "div",
+        { className: "ytcal-row ytcal-row-clickable", title: "Kliknij, aby rozwinąć pełną analizę modelu" },
+        ...pills
       );
+      const details = h("div", { className: "ytcal-details" }, ...this.#detailsNodes(d, a, m, erPct, rev));
+      const expandBtn = h(
+        "button",
+        { className: "ytcal-expand", type: "button", "aria-expanded": "false", "aria-label": "Szczegóły analizy" },
+        createSvg(CHEVRON_DOWN_PATH)
+      );
+
+      return [row, details, expandBtn];
     }
 
     // Structured 3-column scorecard + monetization breakdown drawer.
-    #details(d, a, m, erPct, rev) {
+    #detailsNodes(d, a, m, erPct, rev) {
       const core = YTCAL.core;
       const tg = core.targets();
       const sub = a.subscores || { reach: 50, velocity: 50, engagement: 50 };
@@ -537,37 +588,65 @@
         ? `${core.formatNumber(m.likes)} 👍` + (m.comments != null ? ` · ${core.formatNumber(m.comments)} 💬` : "")
         : "Brak danych";
 
-      const cards =
-        `<div class="ytcal-grid">` +
-        `<div class="ytcal-metric-card">` +
-        `<div class="ytcal-metric-top"><span>Zasięg (${LABEL_PL[a.labels.reach] || a.labels.reach})</span><b>${core.formatNumber(m.views)} wyśw.</b></div>` +
-        `<div class="ytcal-bar-track"><div class="ytcal-bar-fill" style="width:${reachSub}%"></div></div>` +
-        `<div class="ytcal-metric-sub">${reachHint}</div>` +
-        `</div>` +
-        `<div class="ytcal-metric-card">` +
-        `<div class="ytcal-metric-top"><span>Tempo (${LABEL_PL[a.labels.velocity] || a.labels.velocity})</span><b>${core.formatNumber(Math.round(m.vph))}/h</b></div>` +
-        `<div class="ytcal-bar-track"><div class="ytcal-bar-fill" style="width:${m.recent ? velSub : 100}%;opacity:${m.recent ? 1 : 0.35}"></div></div>` +
-        `<div class="ytcal-metric-sub">${velHint}</div>` +
-        `</div>` +
-        `<div class="ytcal-metric-card">` +
-        `<div class="ytcal-metric-top"><span>Zaangażowanie (${LABEL_PL[a.labels.engagement] || a.labels.engagement})</span><b>${erPct != null ? erPct + "%" : "—"} (${likesCommentsTxt})</b></div>` +
-        `<div class="ytcal-bar-track"><div class="ytcal-bar-fill" style="width:${engSub}%"></div></div>` +
-        `<div class="ytcal-metric-sub">${engHint}</div>` +
-        `</div>` +
-        `</div>`;
+      const grid = h(
+        "div",
+        { className: "ytcal-grid" },
+        h(
+          "div",
+          { className: "ytcal-metric-card" },
+          h(
+            "div",
+            { className: "ytcal-metric-top" },
+            h("span", null, `Zasięg (${LABEL_PL[a.labels.reach] || a.labels.reach})`),
+            h("b", null, `${core.formatNumber(m.views)} wyśw.`)
+          ),
+          h("div", { className: "ytcal-bar-track" }, h("div", { className: "ytcal-bar-fill", style: `width:${reachSub}%` })),
+          h("div", { className: "ytcal-metric-sub" }, reachHint)
+        ),
+        h(
+          "div",
+          { className: "ytcal-metric-card" },
+          h(
+            "div",
+            { className: "ytcal-metric-top" },
+            h("span", null, `Tempo (${LABEL_PL[a.labels.velocity] || a.labels.velocity})`),
+            h("b", null, `${core.formatNumber(Math.round(m.vph))}/h`)
+          ),
+          h(
+            "div",
+            { className: "ytcal-bar-track" },
+            h("div", { className: "ytcal-bar-fill", style: `width:${m.recent ? velSub : 100}%;opacity:${m.recent ? 1 : 0.35}` })
+          ),
+          h("div", { className: "ytcal-metric-sub" }, velHint)
+        ),
+        h(
+          "div",
+          { className: "ytcal-metric-card" },
+          h(
+            "div",
+            { className: "ytcal-metric-top" },
+            h("span", null, `Zaangażowanie (${LABEL_PL[a.labels.engagement] || a.labels.engagement})`),
+            h("b", null, `${erPct != null ? erPct + "%" : "—"} (${likesCommentsTxt})`)
+          ),
+          h("div", { className: "ytcal-bar-track" }, h("div", { className: "ytcal-bar-fill", style: `width:${engSub}%` })),
+          h("div", { className: "ytcal-metric-sub" }, engHint)
+        )
+      );
+
+      if (!rev) return [grid];
 
       const langInfo = d && d.videoLang ? ` [${d.videoLang.toUpperCase()} · ${d.marketSource}]` : "";
-      const moneyFooter = rev
-        ? `<div class="ytcal-meta-footer">` +
-          `<span><b>Model przychodu:</b> ~${this.#pln(rev.low)}–${this.#pln(rev.high)} ${rev.currency} (środek geom. ~${this.#pln(rev.revenue)} ${rev.currency})</span>` +
-          `<span><b>Czas oglądania:</b> ~${this.#pln(rev.watchHoursLow)}–${this.#pln(rev.watchHoursHigh)} h</span>` +
-          `<span><b>Retencja AVD:</b> ~${core.formatDurationSec(rev.avdLowSec)}–${core.formatDurationSec(rev.avdHighSec)}</span>` +
-          `<span><b>Reklamy:</b> ${rev.adsPerView}–${rev.adsPerViewHigh} sloty/widza</span>` +
-          `<span><b>Stawka:</b> CPM ${rev.country}${langInfo} ${rev.cpmPln} zł × nisza ${rev.nicheFactor}${rev.category ? ` (${rev.category})` : ""}</span>` +
-          `</div>`
-        : "";
+      const footer = h(
+        "div",
+        { className: "ytcal-meta-footer" },
+        h("span", null, h("b", null, "Model przychodu:"), ` ~${this.#pln(rev.low)}–${this.#pln(rev.high)} ${rev.currency} (środek geom. ~${this.#pln(rev.revenue)} ${rev.currency})`),
+        h("span", null, h("b", null, "Czas oglądania:"), ` ~${this.#pln(rev.watchHoursLow)}–${this.#pln(rev.watchHoursHigh)} h`),
+        h("span", null, h("b", null, "Retencja AVD:"), ` ~${core.formatDurationSec(rev.avdLowSec)}–${core.formatDurationSec(rev.avdHighSec)}`),
+        h("span", null, h("b", null, "Reklamy:"), ` ${rev.adsPerView}–${rev.adsPerViewHigh} sloty/widza`),
+        h("span", null, h("b", null, "Stawka:"), ` CPM ${rev.country}${langInfo} ${rev.cpmPln} zł × nisza ${rev.nicheFactor}${rev.category ? ` (${rev.category})` : ""}`)
+      );
 
-      return cards + moneyFooter;
+      return [grid, footer];
     }
   };
 })();

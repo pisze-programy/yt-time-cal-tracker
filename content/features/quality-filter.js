@@ -57,10 +57,21 @@
   YTCAL.VERDICT_CHIPS = VERDICTS;
   YTCAL.verdictShouldBlur = shouldBlurVerdict;
 
-  const REVEAL_SVG =
-    '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 4.5C7 4.5 2.73 7.61 1 12c1.73 4.39 6 7.5 11 7.5s9.27-3.11 11-7.5c-1.73-4.39-6-7.5-11-7.5zM12 17c-2.76 0-5-2.24-5-5s2.24-5 5-5 5 2.24 5 5-2.24 5-5 5zm0-8c-1.66 0-3 1.34-3 3s1.34 3 3 3 3-1.34 3-3-1.34-3-3-3z"></path></svg>';
-  const DISMISS_SVG =
-    '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 1C5.925 1 1 5.925 1 12s4.925 11 11 11 11-4.925 11-11S18.075 1 12 1Zm0 2a9 9 0 018.246 12.605L4.755 6.661A8.99 8.99 0 0112 3ZM3.754 8.393l15.491 8.944A9 9 0 013.754 8.393Z"></path></svg>';
+  const REVEAL_PATH =
+    "M12 4.5C7 4.5 2.73 7.61 1 12c1.73 4.39 6 7.5 11 7.5s9.27-3.11 11-7.5c-1.73-4.39-6-7.5-11-7.5zM12 17c-2.76 0-5-2.24-5-5s2.24-5 5-5 5 2.24 5 5-2.24 5-5 5zm0-8c-1.66 0-3 1.34-3 3s1.34 3 3 3 3-1.34 3-3-1.34-3-3-3z";
+  const DISMISS_PATH =
+    "M12 1C5.925 1 1 5.925 1 12s4.925 11 11 11 11-4.925 11-11S18.075 1 12 1Zm0 2a9 9 0 018.246 12.605L4.755 6.661A8.99 8.99 0 0112 3ZM3.754 8.393l15.491 8.944A9 9 0 013.754 8.393Z";
+
+  function createSvg(pathD) {
+    const ns = "http://www.w3.org/2000/svg";
+    const svg = document.createElementNS(ns, "svg");
+    svg.setAttribute("viewBox", "0 0 24 24");
+    svg.setAttribute("aria-hidden", "true");
+    const path = document.createElementNS(ns, "path");
+    path.setAttribute("d", pathD);
+    svg.appendChild(path);
+    return svg;
+  }
 
   YTCAL.QualityFilterFeature = class extends YTCAL.TileFeature {
     #revealed = new Set();
@@ -134,7 +145,10 @@
         b.type = "button";
         b.className = `ytcal-filter-chip ytcal-band-${BAND[v]}`;
         b.dataset.verdict = v;
-        b.innerHTML = `<span class="ytcal-chip-name">${v}</span>`;
+        const chipName = document.createElement("span");
+        chipName.className = "ytcal-chip-name";
+        chipName.textContent = v;
+        b.appendChild(chipName);
         b.setAttribute("aria-pressed", String(!this.#hidden.has(v)));
         b.addEventListener("click", (e) => {
           e.preventDefault();
@@ -258,20 +272,30 @@
 
       const actions = document.createElement("div");
       actions.className = "ytcal-actions";
-      actions.innerHTML =
-        `<button class="ytcal-btn ytcal-reveal" title="Reveal" aria-label="Reveal">${REVEAL_SVG}</button>` +
-        `<button class="ytcal-btn ytcal-dismiss" title="Not interested" aria-label="Not interested">${DISMISS_SVG}</button>`;
 
-      actions.querySelector(".ytcal-reveal").addEventListener("click", (e) => {
+      const revealBtn = document.createElement("button");
+      revealBtn.className = "ytcal-btn ytcal-reveal";
+      revealBtn.title = "Reveal";
+      revealBtn.setAttribute("aria-label", "Reveal");
+      revealBtn.appendChild(createSvg(REVEAL_PATH));
+      revealBtn.addEventListener("click", (e) => {
         e.preventDefault();
         e.stopPropagation();
         this.#reveal(el, YTCAL.core.getVideoId(el));
       });
-      actions.querySelector(".ytcal-dismiss").addEventListener("click", (e) => {
+
+      const dismissBtn = document.createElement("button");
+      dismissBtn.className = "ytcal-btn ytcal-dismiss";
+      dismissBtn.title = "Not interested";
+      dismissBtn.setAttribute("aria-label", "Not interested");
+      dismissBtn.appendChild(createSvg(DISMISS_PATH));
+      dismissBtn.addEventListener("click", (e) => {
         e.preventDefault();
         e.stopPropagation();
         this.#dismiss(el, YTCAL.core.getVideoId(el), e.currentTarget);
       });
+
+      actions.append(revealBtn, dismissBtn);
 
       const label = document.createElement("div");
       label.className = "ytcal-label";
