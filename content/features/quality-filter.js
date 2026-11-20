@@ -116,12 +116,15 @@
 
     #syncFullscreen() {
       if (!this.#bar) return;
-      this.#bar.hidden = this.#isFullscreen();
+      const fs = this.#isFullscreen();
+      if (this.#bar.hidden !== fs) this.#bar.hidden = fs;
     }
 
     #ensureBar() {
       const show = this.enabled && verdictFilterOn();
-      const existing = document.querySelector(".ytcal-filter-bar");
+      const existing = this.#bar && document.contains(this.#bar)
+        ? this.#bar
+        : document.querySelector(".ytcal-filter-bar");
       if (!show) {
         if (existing) existing.remove();
         this.#bar = null;
@@ -130,8 +133,10 @@
       if (!document.body) return;
 
       if (existing) {
-        this.#bar = existing;
-        this.#syncBar();
+        if (this.#bar !== existing) {
+          this.#bar = existing;
+          this.#syncBar();
+        }
         this.#syncFullscreen();
         return;
       }

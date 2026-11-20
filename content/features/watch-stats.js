@@ -58,6 +58,9 @@
     #el = null;
     #html = "";
     #expanded = false;
+    #lastCollectAt = 0;
+    #lastVideoId = null;
+    #settled = false;
 
     get enabled() {
       return !window.YTCAL_FEATURES || window.YTCAL_FEATURES.watchStats !== false;
@@ -68,30 +71,56 @@
         console.log("[ytcal] watchStats disabled");
         return;
       }
-      this.render();
+      this.render(true);
     }
 
     onNavigate() {
       this.#expanded = false;
-      this.render();
+      this.#lastCollectAt = 0;
+      this.#settled = false;
+      this.render(true);
     }
 
     onMutate() {
-      this.render();
+      this.render(false);
     }
 
-    render() {
+    // Quantize Date.now()-based age so render() diff keys stay stable across mutations
+    // instead of changing every millisecond and rebuilding the card in a loop.
+    #quantizeAgeHours(rawHours) {
+      if (!Number.isFinite(rawHours)) return null;
+      const h = Math.max(0.01, rawHours);
+      if (h < 1) return Math.max(0.01, Math.round(h * 20) / 20); // 3-min buckets
+      if (h < 72) return Math.round(h * 4) / 4; // 15-min buckets
+      return Math.round(h); // 1-hour buckets
+    }
+
+    render(force = false) {
       if (!this.enabled) return;
       if (location.pathname !== "/watch") {
         this.#remove();
+        this.#lastVideoId = null;
+        this.#lastCollectAt = 0;
+        this.#settled = false;
         return;
+      }
+
+      const videoId = new URLSearchParams(location.search).get("v");
+      const now = performance.now();
+      if (!force && videoId === this.#lastVideoId && this.#el && document.contains(this.#el)) {
+        const minGap = this.#settled ? 15000 : 1000;
+        if (now - this.#lastCollectAt < minGap) return;
       }
 
       const host = document.querySelector("ytd-watch-metadata #above-the-fold");
       if (!host) return;
 
+      this.#lastCollectAt = now;
+      this.#lastVideoId = videoId;
+
       const d = this.#collect();
       if (!d || d.views == null) return;
+      this.#settled = d.likes != null;
 
       const core = YTCAL.core;
       const a = core.analyze({
@@ -140,11 +169,14 @@
 
     #applyExpanded() {
       if (!this.#el) return;
+      const want = this.#expanded ? "true" : "false";
       const details = this.#el.querySelector(".ytcal-details");
+      if (details && details.classList.contains("open") !== this.#expanded) {
+        details.classList.toggle("open", this.#expanded);
+      }
       const btn = this.#el.querySelector(".ytcal-expand");
-      if (details) details.classList.toggle("open", this.#expanded);
-      if (btn) {
-        btn.setAttribute("aria-expanded", this.#expanded ? "true" : "false");
+      if (btn && btn.getAttribute("aria-expanded") !== want) {
+        btn.setAttribute("aria-expanded", want);
         btn.replaceChildren(createSvg(this.#expanded ? CHEVRON_UP_PATH : CHEVRON_DOWN_PATH));
       }
     }
@@ -219,12 +251,12 @@
 
       let ageHours =
         prMatches && mf.publishDate
-          ? (Date.now() - new Date(mf.publishDate).getTime()) / 3.6e6
+          ? this.#quantizeAgeHours((Date.now() - new Date(mf.publishDate).getTime()) / 3.6e6)
           : null;
       if (ageHours == null) ageHours = core.parseAgeHours(infoText);
       if (ageHours == null) {
         const dt = core.parseMonthDate(tooltip);
-        if (dt) ageHours = (Date.now() - dt.getTime()) / 3.6e6;
+        if (dt) ageHours = this.#quantizeAgeHours((Date.now() - dt.getTime()) / 3.6e6);
       }
       if (ageHours == null) {
         const metaDate = document.querySelector(
@@ -233,7 +265,7 @@
         const rawDate = metaDate ? metaDate.getAttribute("content") : null;
         if (rawDate) {
           const ts = new Date(rawDate).getTime();
-          if (Number.isFinite(ts)) ageHours = Math.max(0.01, (Date.now() - ts) / 3.6e6);
+          if (Number.isFinite(ts)) ageHours = this.#quantizeAgeHours((Date.now() - ts) / 3.6e6);
         }
       }
 

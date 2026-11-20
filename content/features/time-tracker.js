@@ -44,14 +44,30 @@
       );
       this.#bindNavigationEvents();
       this.#bindPageLifecycleEvents();
-      this.#lastSampleAt = performance.now();
-      this.#sampleTimer = setInterval(() => this.#sample(), this.#SAMPLE_MS);
 
       const video = document.querySelector("video");
       if (video) this.#attachVideo(video);
       this.#restoreSession();
 
       console.log(this.#TAG, "time-tracker loaded");
+    }
+
+    // Only run the 5s sampler while a video is actively playing so idle/paused
+    // tabs and non-watch pages (home, search) do zero periodic work.
+    #startSampling() {
+      if (this.#sampleTimer) return;
+      this.#lastSampleAt = performance.now();
+      const video = this.#attachedVideo;
+      if (video && Number.isFinite(video.currentTime)) {
+        this.#lastMediaTime = video.currentTime;
+      }
+      this.#sampleTimer = setInterval(() => this.#sample(), this.#SAMPLE_MS);
+    }
+
+    #stopSampling() {
+      if (!this.#sampleTimer) return;
+      clearInterval(this.#sampleTimer);
+      this.#sampleTimer = null;
     }
 
     #startSession() {
@@ -74,6 +90,7 @@
     }
 
     #commitSession() {
+      this.#stopSampling();
       if (!this.#session) return;
       const s = this.#session;
       this.#session = null;
@@ -164,9 +181,13 @@
       this.#pauseTimer = null;
 
       if (!this.#session || this.#session.url !== location.href) this.#startSession();
+      this.#startSampling();
     }
 
     #onPause() {
+      this.#sample(true);
+      this.#persist();
+      this.#stopSampling();
       if (this.#pauseTimer) return;
       this.#pauseTimer = setTimeout(() => {
         this.#pauseTimer = null;
@@ -177,9 +198,12 @@
     // Watched time is accumulated from media-time deltas clamped to the wall-clock
     // time that actually passed. A throttled background timer (or a hidden/PiP tab)
     // therefore no longer undercounts, and a pause inside the interval is not counted.
-    #sample() {
+    #sample(fromPause = false) {
       const video = this.#attachedVideo || document.querySelector("video");
-      if (!video) return;
+      if (!video) {
+        this.#stopSampling();
+        return;
+      }
 
       const now = performance.now();
       const dt = this.#lastSampleAt ? (now - this.#lastSampleAt) / 1000 : 0;
@@ -192,11 +216,12 @@
           const add = dt > 0 ? Math.min(mediaDelta, dt) : mediaDelta;
           // Paused now, but the media advanced -> it played part of the interval; count
           // exactly that part. A forward seek while paused is filtered by Math.min above.
-          if (!video.paused || mediaDelta < dt) this.#session.watchedSec += add;
+          if (!video.paused || fromPause || mediaDelta < dt) this.#session.watchedSec += add;
         }
       }
       if (t != null) this.#lastMediaTime = t;
-      this.#maybePersist();
+      if (!fromPause) this.#maybePersist();
+      if (video.paused && !fromPause) this.#stopSampling();
     }
 
     #attachVideo(video) {
@@ -238,6 +263,7 @@
       const flush = () => {
         clearTimeout(this.#pauseTimer);
         this.#pauseTimer = null;
+        this.#sample(true);
         this.#commitSession();
       };
       window.addEventListener("pagehide", flush);

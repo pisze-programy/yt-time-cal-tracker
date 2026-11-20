@@ -62,14 +62,50 @@
     let mutateTimer = null;
     let lastMutateAt = -1e9;
     const scheduleMutate = () => {
-      if (mutateTimer) return;
+      if (idle || mutateTimer) return;
       const wait = Math.max(0, MUTATE_MIN_MS - (performance.now() - lastMutateAt));
       mutateTimer = setTimeout(() => {
         mutateTimer = null;
+        if (idle) return;
         lastMutateAt = performance.now();
         run("onMutate");
       }, wait);
     };
+
+    // Ignore mutations we caused ourselves (badges, blur overlays, filter bar, watch card)
+    // so injecting UI never triggers a redundant follow-up scan.
+    const isOwnNode = (n) => {
+      if (!n || n.nodeType !== 1) return false;
+      const cls = typeof n.className === "string" ? n.className : "";
+      return cls.includes("ytcal-");
+    };
+    const isOwnTarget = (t) =>
+      Boolean(
+        t &&
+          t.nodeType === 1 &&
+          typeof t.closest === "function" &&
+          t.closest(".ytcal-watch-stats, .ytcal-filter-bar")
+      );
+    const hasExternalMutation = (records) => {
+      for (const r of records) {
+        if (isOwnTarget(r.target)) continue;
+        for (const n of r.addedNodes) {
+          if (!isOwnNode(n)) return true;
+        }
+        for (const n of r.removedNodes) {
+          if (!isOwnNode(n)) return true;
+        }
+      }
+      return false;
+    };
+
+    // Shared, debounced mutation observer (disconnected while idle so background
+    // YouTube tabs do zero observer/timer work).
+    let observing = false;
+    const observer = new MutationObserver((records) => {
+      if (idle || !hasExternalMutation(records)) return;
+      scheduleMutate();
+    });
 
     // Tiles scrolling into view are picked up by the shared viewport gate (core.js).
     YTCAL.core.setViewportListener(scheduleMutate);
@@ -79,7 +115,20 @@
       if (next === idle) return;
       idle = next;
       document.documentElement.classList.toggle("ytcal-idle", idle);
-      if (!initial && !idle) {
+      if (idle) {
+        if (observing) {
+          observer.disconnect();
+          observing = false;
+        }
+        clearTimeout(mutateTimer);
+        mutateTimer = null;
+        return;
+      }
+      if (!observing) {
+        observer.observe(document.body, { childList: true, subtree: true });
+        observing = true;
+      }
+      if (!initial) {
         // Returned to view: run everything that was skipped, immediately.
         clearTimeout(mutateTimer);
         mutateTimer = null;
@@ -87,12 +136,6 @@
         run("onMutate");
       }
     };
-
-    // Shared, debounced mutation observer (features no longer own one).
-    new MutationObserver(scheduleMutate).observe(document.body, {
-      childList: true,
-      subtree: true,
-    });
 
     // SPA navigation — dispatched once (features subscribe to yt:navigate).
     ["pushState", "replaceState"].forEach((m) => {

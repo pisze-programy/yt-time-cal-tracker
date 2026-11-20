@@ -38,7 +38,9 @@
 }
 
 /* Idle = hidden tab or unfocused window: skip expensive backdrop-filter. */
-html.ytcal-idle .ytcal-overlay {
+html.ytcal-idle .ytcal-overlay,
+html.ytcal-idle .ytcal-btn,
+html.ytcal-idle .ytcal-label {
   backdrop-filter: none;
   -webkit-backdrop-filter: none;
 }
@@ -139,8 +141,6 @@ html.ytcal-idle .ytcal-low-quality {
   border-radius: 999px;
   border: 1px solid var(--ytcal-border, rgba(255, 255, 255, 0.28));
   background: var(--ytcal-bg, #374151);
-  backdrop-filter: blur(8px);
-  -webkit-backdrop-filter: blur(8px);
   font: 700 11.5px/1.5 Inter, Roboto, Arial, sans-serif;
   letter-spacing: 0.2px;
   color: #fff;
@@ -182,9 +182,7 @@ html.ytcal-idle .ytcal-low-quality {
 .ytcal-filter-bar[hidden],
 :fullscreen .ytcal-filter-bar,
 :-webkit-full-screen .ytcal-filter-bar,
-ytd-app[fullscreen] ~ .ytcal-filter-bar,
-html:has(ytd-watch-flexy[fullscreen]) .ytcal-filter-bar,
-html:has(ytd-app[fullscreen]) .ytcal-filter-bar {
+ytd-app[fullscreen] ~ .ytcal-filter-bar {
   display: none !important;
 }
 

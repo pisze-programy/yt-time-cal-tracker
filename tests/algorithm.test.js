@@ -416,5 +416,145 @@ ok(!window.YTCAL.verdictShouldBlur("Low", null), "null hidden -> no blur");
   eq(handleCalls, 3, "scanner: re-runs immediately when videoId changes on recycled tile");
 }
 
+// --- performance regressions: time-tracker event-driven sampling & watch-stats stability ---
+{
+  const vm = require("vm");
+
+  // 1. TimeTrackerFeature: zero intervals while paused/idle; starts on play, stops on pause, counts watch time.
+  let intervalsActive = 0;
+  let intervalFn = null;
+  let sentEvents = [];
+  let nowPerf = 1000;
+  const videoListeners = {};
+  const fakeVideo = {
+    tagName: "VIDEO",
+    paused: true,
+    currentTime: 0,
+    addEventListener(ev, fn) { (videoListeners[ev] = videoListeners[ev] || []).push(fn); },
+    removeEventListener(ev, fn) {
+      if (videoListeners[ev]) videoListeners[ev] = videoListeners[ev].filter((f) => f !== fn);
+    },
+  };
+  const docListeners = {};
+  const winListeners = {};
+  const ttCtx = vm.createContext({
+    performance: { now: () => nowPerf },
+    Date,
+    setInterval(fn) { intervalsActive++; intervalFn = fn; return 1; },
+    clearInterval() { intervalsActive = Math.max(0, intervalsActive - 1); intervalFn = null; },
+    setTimeout() { return 2; },
+    clearTimeout() {},
+    document: {
+      title: "Perf Test - YouTube",
+      querySelector: (s) => (s === "video" ? fakeVideo : null),
+      addEventListener(ev, fn) { (docListeners[ev] = docListeners[ev] || []).push(fn); },
+    },
+    location: { href: "https://www.youtube.com/watch?v=abc123", pathname: "/watch" },
+    addEventListener(ev, fn) { (winListeners[ev] = winListeners[ev] || []).push(fn); },
+    browser: {
+      runtime: { sendMessage: (m) => { sentEvents.push(m); return Promise.resolve(); } },
+      storage: { local: { get: () => Promise.resolve({}), set: () => Promise.resolve(), remove: () => Promise.resolve() } },
+    },
+    console: { log() {}, warn() {}, error() {} },
+    YTCAL_FEATURES: { timeTracker: true },
+  });
+  ttCtx.window = ttCtx;
+  vm.runInContext(
+    fs.readFileSync(path.join(__dirname, "..", "content", "features", "time-tracker.js"), "utf8"),
+    ttCtx
+  );
+  const tt = new ttCtx.YTCAL.TimeTrackerFeature();
+  tt.start();
+  eq(intervalsActive, 0, "time-tracker: no interval while video is paused");
+
+  // Start playing -> interval starts
+  fakeVideo.paused = false;
+  (videoListeners.play || []).forEach((fn) => fn());
+  eq(intervalsActive, 1, "time-tracker: interval starts on play");
+
+  // Advance 185s of playback and pause -> final slice sampled, interval stops
+  nowPerf += 185000;
+  fakeVideo.currentTime = 185;
+  fakeVideo.paused = true;
+  (videoListeners.pause || []).forEach((fn) => fn());
+  eq(intervalsActive, 0, "time-tracker: interval stops on pause");
+
+  // Navigate away -> commits >= 180s session
+  ttCtx.location.pathname = "/";
+  (winListeners["yt:navigate"] || []).forEach((fn) => fn());
+  eq(sentEvents.length, 1, "time-tracker: commits session after play+pause");
+  ok(sentEvents[0].durationSec >= 180, `time-tracker: accumulated watch time (${sentEvents[0].durationSec}s >= 180s)`);
+}
+
+{
+  const vm = require("vm");
+
+  // 2. content.js: disconnects MutationObserver while idle and ignores own .ytcal-* mutations.
+  let activeObservers = 0;
+  let observerCb = null;
+  let mutateRuns = 0;
+  let scheduledTimers = [];
+  let docHidden = true;
+  let docFocused = false;
+  const docListeners = {};
+  const winListeners = {};
+  const ctx = vm.createContext({
+    performance: { now: () => 5000 },
+    setTimeout(fn) { scheduledTimers.push(fn); return scheduledTimers.length; },
+    clearTimeout() { scheduledTimers = []; },
+    MutationObserver: class {
+      constructor(cb) { observerCb = cb; }
+      observe() { activeObservers++; }
+      disconnect() { activeObservers = Math.max(0, activeObservers - 1); }
+    },
+    Event: class { constructor(t) { this.type = t; } },
+    history: { pushState() {}, replaceState() {} },
+    document: {
+      documentElement: { classList: { toggle() {} } },
+      body: {},
+      get hidden() { return docHidden; },
+      hasFocus: () => docFocused,
+      addEventListener(ev, fn) { (docListeners[ev] = docListeners[ev] || []).push(fn); },
+    },
+    addEventListener(ev, fn) { (winListeners[ev] = winListeners[ev] || []).push(fn); },
+    dispatchEvent() {},
+    console: { log() {}, warn() {}, error() {} },
+    YTCAL_FEATURES: { scoreBadge: true, timeTracker: false, qualityFilter: false, watchStats: false },
+    YTCAL: {
+      core: { setViewportListener() {}, createScanContext: () => ({ items: [] }) },
+      ScoreBadgeFeature: class {
+        start() {}
+        onNavigate() {}
+        onMutate() { mutateRuns++; }
+      },
+    },
+  });
+  ctx.window = ctx;
+  vm.runInContext(fs.readFileSync(path.join(__dirname, "..", "content.js"), "utf8"), ctx);
+  eq(activeObservers, 0, "content.js: MutationObserver stays disconnected when booted idle");
+
+  // Become active -> observer connects
+  docHidden = false;
+  docFocused = true;
+  (docListeners.visibilitychange || []).forEach((fn) => fn());
+  eq(activeObservers, 1, "content.js: MutationObserver connects when tab becomes active");
+
+  // Own .ytcal-* mutation must not schedule a follow-up mutate pass
+  scheduledTimers = [];
+  observerCb([{ target: { nodeType: 1, closest: () => null }, addedNodes: [{ nodeType: 1, className: "ytcal-thumb-badge" }], removedNodes: [] }]);
+  eq(scheduledTimers.length, 0, "content.js: ignores own .ytcal-* DOM mutations");
+
+  // External YouTube mutation schedules a pass
+  observerCb([{ target: { nodeType: 1, closest: () => null }, addedNodes: [{ nodeType: 1, className: "ytd-rich-item-renderer" }], removedNodes: [] }]);
+  eq(scheduledTimers.length, 1, "content.js: schedules pass on external DOM mutation");
+
+  // Return to idle -> observer disconnects and pending timer is cleared
+  docHidden = true;
+  docFocused = false;
+  (docListeners.visibilitychange || []).forEach((fn) => fn());
+  eq(activeObservers, 0, "content.js: MutationObserver disconnects on idle");
+  eq(scheduledTimers.length, 0, "content.js: clears pending mutate timer on idle");
+}
+
 console.log(`\n${pass} passed, ${fail} failed`);
 process.exit(fail ? 1 : 0);
