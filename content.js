@@ -137,16 +137,33 @@
       }
     };
 
-    // SPA navigation — dispatched once (features subscribe to yt:navigate).
+    // SPA navigation — dispatched once (features subscribe to yt:navigate / yt:navigate-start).
+    // Native yt-navigate-* events cross Firefox's Xray boundary reliably, whereas patching
+    // content-script history.pushState alone does not observe page-script calls.
+    const currentHref = () => (typeof location !== "undefined" ? location.href : "");
+    let lastNavHref = currentHref();
+    const emitNavigate = () => {
+      const href = currentHref();
+      if (href && href === lastNavHref) return;
+      lastNavHref = href;
+      window.dispatchEvent(new Event("yt:navigate"));
+    };
     ["pushState", "replaceState"].forEach((m) => {
       const orig = history[m];
       history[m] = function (...args) {
         const r = orig.apply(this, args);
-        window.dispatchEvent(new Event("yt:navigate"));
+        emitNavigate();
         return r;
       };
     });
-    window.addEventListener("popstate", () => window.dispatchEvent(new Event("yt:navigate")));
+    window.addEventListener("popstate", emitNavigate);
+    window.addEventListener("yt-navigate-start", () =>
+      window.dispatchEvent(new Event("yt:navigate-start"))
+    );
+    window.addEventListener("yt-navigate-finish", () => {
+      lastNavHref = currentHref();
+      window.dispatchEvent(new Event("yt:navigate"));
+    });
     window.addEventListener("yt:navigate", () => run("onNavigate"));
 
     document.addEventListener("visibilitychange", () => syncIdle(false));

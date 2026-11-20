@@ -440,6 +440,8 @@ ok(!window.YTCAL.verdictShouldBlur("Low", null), "null hidden -> no blur");
   const ttCtx = vm.createContext({
     performance: { now: () => nowPerf },
     Date,
+    URL,
+    URLSearchParams,
     setInterval(fn) { intervalsActive++; intervalFn = fn; return 1; },
     clearInterval() { intervalsActive = Math.max(0, intervalsActive - 1); intervalFn = null; },
     setTimeout() { return 2; },

@@ -3,7 +3,7 @@
   "version": "0.2",
   "description": "track time on youtube with google calendar, filter low-quality videos and score views/time",
   "scripts": {
-    "test": "node tests/algorithm.test.js",
+    "test": "node tests/algorithm.test.js && node tests/time-tracker.test.js",
     "package": "rm -f yt-time-cal-tracker.zip && zip -r yt-time-cal-tracker.zip manifest.json background.js options.html options.js feature-flags.js content.js content/ assets/image-48x48-20260627151302.png assets/image-96x96-20260627151304.png LICENSE -x '*.DS_Store'"
   },
   "dependencies": {
