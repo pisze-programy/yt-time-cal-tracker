@@ -209,8 +209,6 @@
       if (overlay) overlay.remove();
       const actions = el.querySelector(".ytcal-actions");
       if (actions) actions.remove();
-      const label = el.querySelector(".ytcal-label");
-      if (label) label.remove();
     }
 
     #applyToTile(el, meta) {
@@ -243,11 +241,8 @@
 
       if (this.#isHidden(a.verdict)) {
         el.classList.add("ytcal-low-quality");
-        const label = el.querySelector(".ytcal-label");
-        if (el.querySelector(".ytcal-actions")) {
-          if (label) label.textContent = this.#labelText(meta, a.verdict);
-        } else {
-          this.#renderActions(el, meta, a.verdict);
+        if (!el.querySelector(".ytcal-actions")) {
+          this.#renderActions(el);
         }
       } else {
         this.#clearBlur(el);
@@ -264,7 +259,7 @@
       }
     }
 
-    #renderActions(el, meta, verdict) {
+    #renderActions(el) {
       if (el.querySelector(".ytcal-actions")) return;
 
       const overlay = document.createElement("div");
@@ -302,18 +297,8 @@
 
       actions.append(revealBtn, dismissBtn);
 
-      const label = document.createElement("div");
-      label.className = "ytcal-label";
-      label.textContent = this.#labelText(meta, verdict);
-
       el.appendChild(overlay);
       el.appendChild(actions);
-      el.appendChild(label);
-    }
-
-    #labelText(meta, verdict) {
-      const core = YTCAL.core;
-      return `${verdict} · ${core.formatNumber(meta.views)} wyśw. · ${core.formatAgeHours(meta.ageHours)}`;
     }
 
     #reveal(el, id) {
